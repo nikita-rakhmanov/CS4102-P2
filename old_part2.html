@@ -735,79 +735,77 @@
          const vertCode = `
             attribute vec4 aPosition;
             attribute vec4 aColor;
-            attribute vec4 aNormal;
+            attribute vec4 aNormal;      // Expecting FACE normal here 
             attribute vec2 aTexCoord;
-            attribute vec4 aCentroid;
+            attribute vec4 aCentroid;    // Triangle centroid
 
             uniform mat4 uModelMatrix;
             uniform mat4 uViewMatrix;
             uniform mat4 uProjectionMatrix;
             uniform mat4 uNormalMatrix;
             uniform vec3 uLightPosition;
+            uniform vec3 uLightColor;
+            uniform vec3 uAmbientColor;
+            uniform float uAmbientIntensity;
+            uniform float uAttenuationFactor;
 
             varying vec4 vColor;
             varying vec2 vTexCoord;
-            varying vec3 vNormal;
-            varying vec3 vLightDir;
-            varying float vLightDistance;
-            
+            varying vec3 vLighting;      // Pre-calculated lighting
+
             void main() {
-                // Position calculation
+                // Standard position calculation
                 gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
                 
-                // Calculate transformed centroid for flat shading with point light
+                // --- Flat Shading Calculation ---
+                // Transform face normal
+                vec3 faceNormal = normalize((uNormalMatrix * aNormal).xyz);
+                
+                // Transform centroid to world space
                 vec4 worldCentroid = uModelMatrix * aCentroid;
                 
-                // Transform normal
-                vec4 transformedNormal = uNormalMatrix * aNormal;
-                vNormal = normalize(transformedNormal.xyz); // Pre-normalize in vertex shader
+                // Calculate light vector from centroid to light
+                vec3 lightDir = uLightPosition - worldCentroid.xyz;
+                float lightDistance = length(lightDir);
+                lightDir = normalize(lightDir);
                 
-                // Calculate light direction and distance for point light
-                vLightDir = uLightPosition - worldCentroid.xyz;
-                vLightDistance = length(vLightDir);
-                vLightDir = normalize(vLightDir); // Pre-normalize in vertex shader
+                // Calculate attenuation based on distance
+                float attenuation = 1.0 / (1.0 + uAttenuationFactor * lightDistance + 0.01 * lightDistance * lightDistance);
+                
+                // Calculate diffuse factor using FACE normal and centroid-based light vector
+                float diffuseFactor = max(dot(faceNormal, lightDir), 0.0) * attenuation;
+                vec3 diffuse = uLightColor * diffuseFactor;
+                
+                // Calculate ambient component
+                vec3 ambient = uAmbientColor * uAmbientIntensity;
+                
+                // Combine lighting (pass as a single value - key for flat shading)
+                vLighting = ambient + diffuse;
+                // --- End Flat Shading Calculation ---
                 
                 // Pass color and texture coordinates
                 vColor = aColor;
                 vTexCoord = aTexCoord;
             }
-         `;
+            `;
 
-         // Fragment Shader with improved efficiency
-         const fragCode = `
-            precision mediump float;
-            
-            varying vec4 vColor;
-            varying vec2 vTexCoord;
-            varying vec3 vNormal;
-            varying vec3 vLightDir;
-            varying float vLightDistance;
-            
-            uniform sampler2D uTexture;
-            uniform vec3 uLightColor;
-            uniform vec3 uAmbientColor;      // Added uniform for ambient color
-            uniform float uAmbientIntensity;  // Added uniform for ambient intensity
-            uniform float uAttenuationFactor; // Added uniform for controlling attenuation
-            
-            void main() {
-                // Get texture color
-                vec4 texColor = texture2D(uTexture, vTexCoord);
+            const fragCode = `
+                precision mediump float;
                 
-                // Ambient component - now uses uniform values
-                vec3 ambient = uAmbientColor * uAmbientIntensity;
+                varying vec4 vColor;
+                varying vec2 vTexCoord;
+                varying vec3 vLighting;      // Receive pre-calculated lighting
                 
-                // Calculate diffuse with configurable distance attenuation
-                float attenuation = 1.0 / (1.0 + uAttenuationFactor * vLightDistance + 0.01 * vLightDistance * vLightDistance);
-                float diffuseFactor = max(dot(vNormal, vLightDir), 0.0) * attenuation;
-                vec3 diffuse = uLightColor * diffuseFactor;
+                uniform sampler2D uTexture;
                 
-                // Combine lighting components
-                vec3 lighting = ambient + diffuse;
-                
-                // Apply lighting to texture color
-                gl_FragColor = vec4(texColor.rgb * vColor.rgb * lighting, 1.0);
+                void main() {
+                    // Get texture color
+                    vec4 texColor = texture2D(uTexture, vTexCoord);
+                    
+                    // Simply apply the pre-calculated lighting to texture & vertex color
+                    gl_FragColor = vec4(texColor.rgb * vColor.rgb * vLighting, 1.0);
             }
-         `;
+            `;
       </script>
 
       <script>
@@ -868,9 +866,9 @@
          }
 
          // Load textures
-         const brickTexture = loadTexture("brick_texture.png");
-         const grassTexture = loadTexture("grass_texture.png");  
-         const stoneTexture = loadTexture("stone_texture.png"); 
+         const brickTexture = loadTexture("textures/brick_texture.png");
+         const grassTexture = loadTexture("textures/grass_texture.png");  
+         const stoneTexture = loadTexture("textures/stone_texture.png"); 
 
          // Create objects array
          let sceneObjects = [];
@@ -908,8 +906,8 @@
 
 
          // Load tree textures
-         const woodTexture = loadTexture("wood_texture.png");
-         const leafTexture = loadTexture("leaf_texture.png");
+         const woodTexture = loadTexture("textures/wood_texture.png");
+         const leafTexture = loadTexture("textures/leaf_texture.png");
 
          // Create trees
          const treePositions = [
