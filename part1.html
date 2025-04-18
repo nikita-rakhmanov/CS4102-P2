@@ -830,7 +830,7 @@
          let pathBuffer = initObject(pathObject, shaderprogram);
          pathBuffer.texture = stoneTexture;
          pathBuffer.model = mat4.create();
-         pathBuffer.pulseSpeed = 0.2; // Slower pulse for path
+         pathBuffer.pulseSpeed = 0.0; // Slower pulse for path
          pathBuffer.pulseOffset = Math.PI / 2; // Out of phase with house
          pathBuffer.baseScale = 1.0;
          sceneObjects.push(pathBuffer);
@@ -945,7 +945,7 @@
             const deltaTime = currentTime - lastTime || 0.016;
             lastTime = currentTime;
 
-            // Keep the dynamic lighting
+            //dynamic lighting
             const lightX = 2.0 * Math.cos(currentTime * 0.5);
             const lightZ = 2.0 * Math.sin(currentTime * 0.5);
             gl.uniform3f(lightPosLoc, lightX, 2.0, lightZ);
@@ -969,13 +969,15 @@
                     mat4.identity(sceneObjects[i].model);
                     mat4.fromScaling(sceneObjects[i].model, [0.8 * pulseScale, 0.8 * pulseScale, 0.8 * pulseScale]);
                     mat4.rotateY(sceneObjects[i].model, sceneObjects[i].model, angle);
-                } else if (i === 1) { // Ground - no pulsing
+                } else if (i === 1 || i === 2) { // Ground/path - no pulsing
                     mat4.identity(sceneObjects[i].model);
                     mat4.fromScaling(sceneObjects[i].model, [1.0, 1.0, 1.0]);
-                } else if (i === 2) { // Path - horizontal pulsing only
-                    mat4.identity(sceneObjects[i].model);
-                    mat4.fromScaling(sceneObjects[i].model, [pulseScale, 1.0, pulseScale]);
-                } else { // Trees - position and pulse
+                }
+                // } else if (i === 2) { // Path - horizontal pulsing only
+                //     mat4.identity(sceneObjects[i].model);
+                //     mat4.fromScaling(sceneObjects[i].model, [pulseScale, 1.0, pulseScale]);
+                // } 
+                else { // Trees - position and pulse
                     const treePos = treePositions[i-3];
                     mat4.identity(sceneObjects[i].model);
                     mat4.fromScaling(sceneObjects[i].model, [
