@@ -33,6 +33,7 @@
             let color_buffer = bufferObject.color_buffer;
             let normal_buffer = bufferObject.normal_buffer;
             let tex_buffer = bufferObject.tex_buffer;
+            let centroid_buffer = bufferObject.centroid_buffer;
             let index_buffer = bufferObject.index_buffer;
             let number = bufferObject.numVertices;
 
@@ -68,6 +69,14 @@
                 gl.enableVertexAttribArray(aTexCoord);
             }
 
+            // Add this for centroids
+            gl.bindBuffer(gl.ARRAY_BUFFER, centroid_buffer);
+            let aCentroid = gl.getAttribLocation(shaderprogram, "aCentroid");
+            if (aCentroid !== -1) {
+                gl.vertexAttribPointer(aCentroid, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aCentroid);
+            }
+
             // Bind index buffer and draw
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
             gl.drawElements(gl.TRIANGLES, number, gl.UNSIGNED_SHORT, 0);
@@ -92,6 +101,9 @@
             let normals = object.normals.flat();
             let texcoords = object.texcoords.flat();
             
+            // Calculate centroids for each triangle for flat shading with point light
+            let centroids = calculateCentroids(vertices, indices);
+            
             // Create and store data into vertex buffer
             let vertex_buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
@@ -111,6 +123,11 @@
             let tex_buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+            
+            // Add centroid buffer
+            let centroid_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, centroid_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(centroids), gl.STATIC_DRAW);
 
             // Create and store data into index buffer
             let index_buffer = gl.createBuffer();
@@ -122,6 +139,7 @@
                 color_buffer: color_buffer,
                 normal_buffer: normal_buffer,
                 tex_buffer: tex_buffer,
+                centroid_buffer: centroid_buffer,
                 index_buffer: index_buffer,
                 numVertices: indices.length 
             };
@@ -168,6 +186,48 @@
             gl.useProgram(shaderprogram);
 
             return shaderprogram;
+         }
+
+         /**
+          * Calculates the centroid of each triangle for flat shading
+          * @param {Array} vertices - Array of vertex positions
+          * @param {Array} indices - Array of triangle indices
+          * @returns {Array} - Array of centroids for each vertex in each triangle
+          */
+         function calculateCentroids(vertices, indices) {
+            let centroids = [];
+            
+            // For each triangle
+            for (let i = 0; i < indices.length; i += 3) {
+                const idx1 = indices[i];
+                const idx2 = indices[i+1];
+                const idx3 = indices[i+2];
+                
+                // Get vertex positions from flattened array
+                const v1x = vertices[idx1*4];
+                const v1y = vertices[idx1*4+1];
+                const v1z = vertices[idx1*4+2];
+                
+                const v2x = vertices[idx2*4];
+                const v2y = vertices[idx2*4+1];
+                const v2z = vertices[idx2*4+2];
+                
+                const v3x = vertices[idx3*4];
+                const v3y = vertices[idx3*4+1];
+                const v3z = vertices[idx3*4+2];
+                
+                // Calculate centroid of the triangle
+                const centroidX = (v1x + v2x + v3x) / 3;
+                const centroidY = (v1y + v2y + v3y) / 3;
+                const centroidZ = (v1z + v2z + v3z) / 3;
+                
+                // Store the same centroid for each vertex of this triangle
+                centroids.push(centroidX, centroidY, centroidZ, 1.0);
+                centroids.push(centroidX, centroidY, centroidZ, 1.0);
+                centroids.push(centroidX, centroidY, centroidZ, 1.0);
+            }
+            
+            return centroids;
          }
       </script>
       <script>
@@ -487,6 +547,115 @@
                 texcoords: texcoords
             };
         }
+
+        /**
+         * Create a simple tree object consisting of a trunk and a cone-shaped crown
+         */
+        function tree() {
+            // Tree parameters
+            const trunkHeight = 0.6;
+            const trunkRadius = 0.1;
+            const crownHeight = 0.8;
+            const crownRadius = 0.4;
+            const segments = 8; // Number of segments for the cylindrical trunk and conical crown
+            
+            let vertices = [];
+            let colors = [];
+            let normals = [];
+            let texcoords = [];
+            let indices = [];
+            
+            // Create the tree trunk (cylinder)
+            // Bottom center of trunk
+            const trunkBottomY = -0.5; // Position at the same height as ground
+            
+            // Create the trunk vertices
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x = trunkRadius * Math.cos(angle);
+                const z = trunkRadius * Math.sin(angle);
+                
+                // Bottom vertex
+                vertices.push([x, trunkBottomY, z, 1]);
+                colors.push([0.6, 0.4, 0.2, 1.0]); // Brown for trunk
+                normals.push([x, 0, z, 0]); // Normal pointing outward
+                texcoords.push([i / segments, 0]);
+                
+                // Top vertex
+                vertices.push([x, trunkBottomY + trunkHeight, z, 1]);
+                colors.push([0.6, 0.4, 0.2, 1.0]); // Brown for trunk
+                normals.push([x, 0, z, 0]); // Normal pointing outward
+                texcoords.push([i / segments, 1]);
+            }
+            
+            // Create trunk indices (triangles)
+            for (let i = 0; i < segments; i++) {
+                const idx = i * 2;
+                
+                // First triangle
+                indices.push([idx, idx + 1, idx + 2]);
+                
+                // Second triangle
+                indices.push([idx + 1, idx + 3, idx + 2]);
+            }
+            
+            // Create the crown (cone)
+            const crownBaseY = trunkBottomY + trunkHeight;
+            const crownTopY = crownBaseY + crownHeight;
+            
+            // Crown base center
+            const crownBaseCenterIdx = vertices.length;
+            vertices.push([0, crownBaseY, 0, 1]);
+            colors.push([0.0, 0.8, 0.0, 1.0]); // Green for crown
+            normals.push([0, -1, 0, 0]); // Normal pointing down
+            texcoords.push([0.5, 0.5]);
+            
+            // Crown top point
+            const crownTopIdx = vertices.length;
+            vertices.push([0, crownTopY, 0, 1]);
+            colors.push([0.0, 0.8, 0.0, 1.0]); // Green for crown
+            normals.push([0, 1, 0, 0]); // Normal pointing up
+            texcoords.push([0.5, 0.5]);
+            
+            // Crown base circle
+            const crownBaseStartIdx = vertices.length;
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x = crownRadius * Math.cos(angle);
+                const z = crownRadius * Math.sin(angle);
+                
+                // Base circle vertex
+                vertices.push([x, crownBaseY, z, 1]);
+                colors.push([0.0, 0.8, 0.0, 1.0]); // Green for crown
+                
+                // Calculate normal for cone surface (pointing outward and up)
+                const nx = x;
+                const nz = z;
+                const normalLength = Math.sqrt(nx*nx + crownHeight*crownHeight + nz*nz);
+                normals.push([nx/normalLength, crownHeight/normalLength, nz/normalLength, 0]);
+                
+                texcoords.push([i / segments, 0]);
+            }
+            
+            // Create crown side triangles
+            for (let i = 0; i < segments; i++) {
+                const idx = crownBaseStartIdx + i;
+                
+                // Triangle from base to top
+                indices.push([idx, idx + 1, crownTopIdx]);
+                
+                // Triangle for base circle (closing the bottom of the cone)
+                indices.push([crownBaseCenterIdx, idx + 1, idx]);
+            }
+            
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices,
+                normals: normals,
+                texcoords: texcoords
+            };
+        }
       </script>
 
       <script>
@@ -497,25 +666,36 @@
             attribute vec4 aColor;
             attribute vec4 aNormal;
             attribute vec2 aTexCoord;
+            attribute vec4 aCentroid;
 
             uniform mat4 uModelMatrix;
             uniform mat4 uViewMatrix;
             uniform mat4 uProjectionMatrix;
             uniform mat4 uNormalMatrix;
+            uniform vec3 uLightPosition;
 
             varying vec4 vColor;
-            varying vec3 vLighting;
             varying vec2 vTexCoord;
+            varying vec3 vNormal;
+            varying vec3 vLightDir;
+            varying float vLightDistance;
             
             void main() {
-               // Apply all transformations to the vertex position
+               // Position calculation
                gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
                
-               // Simple ambient lighting
-               highp vec3 ambientLight = vec3(0.8, 0.8, 0.8);
+               // Calculate transformed centroid for flat shading with point light
+               vec4 worldCentroid = uModelMatrix * aCentroid;
                
-               // Pass variables to fragment shader
-               vLighting = ambientLight;
+               // Transform normal
+               vec4 transformedNormal = uNormalMatrix * aNormal;
+               vNormal = transformedNormal.xyz;
+               
+               // Calculate light direction and distance for point light
+               vLightDir = uLightPosition - worldCentroid.xyz;
+               vLightDistance = length(vLightDir);
+               
+               // Pass color and texture coordinates
                vColor = aColor;
                vTexCoord = aTexCoord;
             }
@@ -526,17 +706,35 @@
             precision mediump float;
             
             varying vec4 vColor;
-            varying vec3 vLighting;
             varying vec2 vTexCoord;
+            varying vec3 vNormal;
+            varying vec3 vLightDir;
+            varying float vLightDistance;
             
             uniform sampler2D uTexture;
+            uniform vec3 uLightColor;
             
             void main() {
                // Get texture color
                vec4 texColor = texture2D(uTexture, vTexCoord);
                
-               // Combine texture with vertex color and apply lighting
-               gl_FragColor = vec4(texColor.rgb * vColor.rgb * vLighting, 1.0);
+               // Ambient component
+               vec3 ambient = vec3(0.3, 0.3, 0.3);
+               
+               // Normalize vectors
+               vec3 normal = normalize(vNormal);
+               vec3 lightDir = normalize(vLightDir);
+               
+               // Calculate diffuse with distance attenuation
+               float attenuation = 1.0 / (1.0 + 0.1 * vLightDistance + 0.01 * vLightDistance * vLightDistance);
+               float diffuseFactor = max(dot(normal, lightDir), 0.0) * attenuation;
+               vec3 diffuse = uLightColor * diffuseFactor;
+               
+               // Combine lighting components
+               vec3 lighting = ambient + diffuse;
+               
+               // Apply lighting to texture color
+               gl_FragColor = vec4(texColor.rgb * vColor.rgb * lighting, 1.0);
             }
          `;
       </script>
@@ -612,6 +810,9 @@
          houseBuffer.texture = brickTexture;
          houseBuffer.model = mat4.create();
          mat4.fromScaling(houseBuffer.model, [0.8, 0.8, 0.8]);
+         houseBuffer.pulseSpeed = 0.6; // Moderate pulse speed for house
+         houseBuffer.pulseOffset = 0; // Starting phase
+         houseBuffer.baseScale = 0.8; // Base scale factor
          sceneObjects.push(houseBuffer);
 
          // Create the ground
@@ -619,6 +820,9 @@
          let groundBuffer = initObject(groundObject, shaderprogram);
          groundBuffer.texture = grassTexture;
          groundBuffer.model = mat4.create();
+         groundBuffer.pulseSpeed = 0; // Ground doesn't pulse
+         groundBuffer.pulseOffset = 0;
+         groundBuffer.baseScale = 1.0;
          sceneObjects.push(groundBuffer);
 
          // Create the path (curved version)
@@ -626,7 +830,40 @@
          let pathBuffer = initObject(pathObject, shaderprogram);
          pathBuffer.texture = stoneTexture;
          pathBuffer.model = mat4.create();
+         pathBuffer.pulseSpeed = 0.2; // Slower pulse for path
+         pathBuffer.pulseOffset = Math.PI / 2; // Out of phase with house
+         pathBuffer.baseScale = 1.0;
          sceneObjects.push(pathBuffer);
+
+         // Add this after your path creation code, before the render function setup
+
+         // Load wood texture if not already loaded
+         const woodTexture = loadTexture("wood_texture.png");
+
+         // Create trees
+         const treePositions = [
+             { x: 1.2, z: -0.4, scale: 0.9 },
+             { x: -1.8, z: 0.8, scale: 0.8 },
+             { x: 0.0, z: -1.5, scale: 1.1 }
+         ];
+
+         for (let i = 0; i < treePositions.length; i++) {
+             let treeObject = tree();
+             let treeBuffer = initObject(treeObject, shaderprogram);
+             treeBuffer.texture = woodTexture;
+             treeBuffer.model = mat4.create();
+             
+             // Position and scale the tree
+             const pos = treePositions[i];
+             mat4.fromScaling(treeBuffer.model, [pos.scale, pos.scale, pos.scale]);
+             mat4.translate(treeBuffer.model, treeBuffer.model, [pos.x, 0, pos.z]);
+             
+             treeBuffer.pulseSpeed = 0.4 + i * 0.1; // Different speed for each tree
+             treeBuffer.pulseOffset = i * Math.PI / 3; // Different phase for each tree
+             treeBuffer.baseScale = pos.scale;
+
+             sceneObjects.push(treeBuffer);
+         }
 
          // Create a model matrix for the house
          let M_model = mat4.create();
@@ -679,6 +916,20 @@
          let normalLoc = gl.getUniformLocation(shaderprogram, "uNormalMatrix");
          gl.uniformMatrix4fv(normalLoc, false, M_normal);
 
+         // Add after your shader uniform setup, before the animation starts
+
+         // Set up point light position and color
+         const lightPosition = [2.0, 2.0, 2.0]; // Position light above and to the right of scene
+         const lightColor = [1.0, 1.0, 0.9];    // Slightly warm light color
+
+         // Get uniform locations for light properties
+         const lightPosLoc = gl.getUniformLocation(shaderprogram, "uLightPosition");
+         const lightColorLoc = gl.getUniformLocation(shaderprogram, "uLightColor");
+
+         // Set light uniforms
+         gl.uniform3fv(lightPosLoc, lightPosition);
+         gl.uniform3fv(lightColorLoc, lightColor);
+
          // Set up texture uniform
          let texLoc = gl.getUniformLocation(shaderprogram, "uTexture");
          gl.uniform1i(texLoc, 0); // Use texture unit 0
@@ -687,12 +938,17 @@
          let angle = 0;
          let lastTime = 0;
 
-         // Render function for animation
+         // Modify your existing render function to include the pulsing animation
          function render(currentTime) {
             // Calculate time difference for smooth animation
             currentTime *= 0.001; // Convert to seconds
             const deltaTime = currentTime - lastTime || 0.016;
             lastTime = currentTime;
+
+            // Keep the dynamic lighting
+            const lightX = 2.0 * Math.cos(currentTime * 0.5);
+            const lightZ = 2.0 * Math.sin(currentTime * 0.5);
+            gl.uniform3f(lightPosLoc, lightX, 2.0, lightZ);
             
             // Clear the canvas
             glInit();
@@ -702,11 +958,32 @@
             
             // Draw each object
             for (let i = 0; i < sceneObjects.length; i++) {
-                // Apply object's model matrix
-                if (i === 0) { // House - animate it
+                // Calculate pulsing scale factor using sine wave
+                const pulseAmount = 0.1; // Max scale variation (10%)
+                const pulseScale = sceneObjects[i].baseScale + 
+                                   (Math.sin(currentTime * sceneObjects[i].pulseSpeed + 
+                                    sceneObjects[i].pulseOffset) * pulseAmount);
+                
+                // Apply object's model matrix with both rotation and pulsing
+                if (i === 0) { // House - animate with rotation and pulsing
                     mat4.identity(sceneObjects[i].model);
-                    mat4.fromScaling(sceneObjects[i].model, [0.8, 0.8, 0.8]);
+                    mat4.fromScaling(sceneObjects[i].model, [0.8 * pulseScale, 0.8 * pulseScale, 0.8 * pulseScale]);
                     mat4.rotateY(sceneObjects[i].model, sceneObjects[i].model, angle);
+                } else if (i === 1) { // Ground - no pulsing
+                    mat4.identity(sceneObjects[i].model);
+                    mat4.fromScaling(sceneObjects[i].model, [1.0, 1.0, 1.0]);
+                } else if (i === 2) { // Path - horizontal pulsing only
+                    mat4.identity(sceneObjects[i].model);
+                    mat4.fromScaling(sceneObjects[i].model, [pulseScale, 1.0, pulseScale]);
+                } else { // Trees - position and pulse
+                    const treePos = treePositions[i-3];
+                    mat4.identity(sceneObjects[i].model);
+                    mat4.fromScaling(sceneObjects[i].model, [
+                        treePos.scale * pulseScale, 
+                        treePos.scale * pulseScale, 
+                        treePos.scale * pulseScale
+                    ]);
+                    mat4.translate(sceneObjects[i].model, sceneObjects[i].model, [treePos.x, 0, treePos.z]);
                 }
                 
                 // Update normal matrix
