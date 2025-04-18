@@ -887,10 +887,10 @@
          pathBuffer.baseScale = 1.0;
          sceneObjects.push(pathBuffer);
 
-         // Add this after your path creation code, before the render function setup
 
-         // Load wood texture if not already loaded
+         // Load tree textures
          const woodTexture = loadTexture("wood_texture.png");
+         const leafTexture = loadTexture("leaf_texture.png");
 
          // Create trees
          const treePositions = [
@@ -973,8 +973,8 @@
          // Set up point light position and color
          const lightPosition = [2.0, 2.0, 2.0]; // Position light above and to the right of scene
          const lightColor = [1.0, 1.0, 0.9];    // Slightly warm light color
-         const ambientColor = [0.3, 0.3, 0.35]; // Ambient light color
-         const ambientIntensity = 0.25; // Ambient light intensity
+         const ambientColor = [0.4, 0.4, 0.45]; // Ambient light color
+         const ambientIntensity = 0.4; // Ambient light intensity
          const attenuationFactor = 0.1; // Attenuation factor for distance-based lighting
 
          // Get uniform locations for light properties
@@ -1026,7 +1026,7 @@
             gl.uniform3f(lightPosLoc, lightX, lightY, lightZ);
             
             // You could also animate ambient intensity for day/night cycle effects
-            const cycleIntensity = 0.2 + 0.1 * Math.sin(currentTime * 0.1); // Slow ambient light cycle
+            const cycleIntensity = 0.4 + 0.1 * Math.sin(currentTime * 0.1); // Slow ambient light cycle
             gl.uniform1f(ambientIntensityLoc, cycleIntensity);
             
             // Clear the canvas
