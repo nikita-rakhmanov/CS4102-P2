@@ -9,7 +9,7 @@
       <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" type="text/javascript"></script>
       <script>
          /**
-          * This function initialises GL and the viewport.
+          * InitialisING GL and the viewport.
           */
           function glInit() {
             // Initialise and clear viewport
@@ -21,7 +21,7 @@
          }
 
          /**
-          * This function draws an object using the supplied shader program
+          * Function for drawing an object using the created shader program
           * 
           * @param   bufferObject   An object returned by initObject
           * @param   shaderprogram  a shader program returned by createProgram
@@ -74,18 +74,17 @@
          }
 
          /**
-          * This function initialises an object. It uploads all its arrays to the GPU
+          * Here we initialise an object. It uploads all its arrays to the GPU
           * and records the references to each. We can then pass this object to drawObject
-          * which will bind the arrays appropriately
+          * which will bind the arrays
           * 
-          * @param   object         An object containing arrays for vertices, colors, normals, texcoords, and indices
-          * @param   shaderprogram  a shader program returned by createProgram
+          * @param   object         An object with arrays for vertices/colors/normals/texcoords/indices
+          * @param   shaderprogram  the shader program returned by createProgram
           */
         function initObject(object, shaderprogram) {
             gl.useProgram(shaderprogram);
 
-            // Vertices, colors and indices arrive in the form of 2D matrix objects for ease of manipulation
-            // We need to flatten them and convert them to JS arrays before passing them to WebGL
+            // Since all the arrays come in the form of 2D matrix objects, we need to flatten them
             let vertices = object.vertices.flat();
             let colors = object.colors.flat();
             let indices = object.indices.flat();
@@ -128,7 +127,7 @@
         }
 
          /**
-          * This function compiles the supplied vertex and fragment shaders into a program
+          * Compiling the supplied vertex and fragment shaders into a program
           * 
           * @param   vertCode  Vertex shader code, written in GLSL
           * @param   fragCode  Fragment shader code, written in GLSL
@@ -155,6 +154,7 @@
                console.error('Fragment shader compilation error: ' + gl.getShaderInfoLog(fragShader));
             }
 
+            // Create shader program and link shaders
             let shaderprogram = gl.createProgram();
             gl.attachShader(shaderprogram, vertShader);
             gl.attachShader(shaderprogram, fragShader);
@@ -182,16 +182,17 @@
             const vec1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
             const vec2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
             
-            // Calculate cross product
+            // Calculate cross product to find the normal vector
             const normal = [
                 vec1[1] * vec2[2] - vec1[2] * vec2[1],
                 vec1[2] * vec2[0] - vec1[0] * vec2[2],
                 vec1[0] * vec2[1] - vec1[1] * vec2[0]
             ];
             
-            // Normalize the vector
+            // Normalize the vector - to make it a unit vector
             const length = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
             
+            // Avoid division by zero
             if (length > 0) {
                 normal[0] /= length;
                 normal[1] /= length;
@@ -204,12 +205,12 @@
       </script>
       <script>
          /**
-          * Create a house shape with at least 8 faces
+          * Create a house shape with 8 faces
           * 
           * @returns    object consisting of vertices, colors, normals, texcoords, and indices
           */
          function house() {
-            // Parameters remain the same
+            // Parameters for the house dimensions
             const width = 0.8;
             const length = 1.0;
             const height = 0.6;
@@ -220,7 +221,7 @@
             // We'll duplicate vertices to allow different texture coordinates per face
             // First define the basic positions that will be reused
             const positions = [
-                // Base/floor vertices (y = -height/2)
+                // Base/floor vertices (y = -height/2) 
                 [-w2, -height/2, -l2],  // 0: front-left
                 [w2, -height/2, -l2],   // 1: front-right
                 [w2, -height/2, l2],    // 2: back-right
@@ -259,7 +260,7 @@
                 // Add texture coordinates
                 texcoords.push(ta, tb, tc);
                 
-                // Add colors (white)
+                // Add colors (white, in case the texture is not loaded)
                 colors.push(
                     [1.0, 1.0, 1.0, 1.0],
                     [1.0, 1.0, 1.0, 1.0],
@@ -343,7 +344,7 @@
       </script>
 
       <script>
-         // GLSL shader code - Simple ambient shading
+         // GLSL shader code with ambient shading
          const vertCode = `
             attribute vec4 aPosition;
             attribute vec4 aColor;
@@ -436,7 +437,7 @@
              });
              
              image.addEventListener("error", function(e) {
-                 console.error("Error loading texture:", e, url);
+                 console.error("Error loading texture:", e, url); // Log error
              });
              
              image.src = url;
@@ -456,8 +457,7 @@
          let M_model = mat4.create();
          mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view
          
-         // Create a view matrix with a trimetric view
-         // Trimetric projection: viewing object from 3 angles, none of which are equal
+         // Create a view matrix with a trimetric view -> viewing object from 3 angles, none of which are equal
          let M_view = mat4.create();
          mat4.lookAt(
             M_view,
@@ -508,7 +508,7 @@
             currentTime *= 0.001; 
             
             // Calculate delta time
-            const deltaTime = lastTime === null ? 0.016 : currentTime - lastTime;
+            const deltaTime = lastTime === null ? 0.016 : currentTime - lastTime; // 60 FPS if no lastTime
             lastTime = currentTime;
             
             // Clear the canvas

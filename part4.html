@@ -9,7 +9,7 @@
       <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" type="text/javascript"></script>
       <script>
          /**
-          * This function initialises GL and the viewport.
+          * Function for initializing GL and the viewport.
           */
           function glInit() {
             // Initialise and clear viewport
@@ -21,7 +21,7 @@
          }
 
          /**
-          * This function draws an object using the supplied shader program
+          * Function for drawing an object using the created shader program
           * 
           * @param   bufferObject   An object returned by initObject
           * @param   shaderprogram  a shader program returned by createProgram
@@ -69,7 +69,7 @@
                 gl.enableVertexAttribArray(aTexCoord);
             }
 
-            // Add this for centroids
+            // Bind centroid buffer for flat shading
             gl.bindBuffer(gl.ARRAY_BUFFER, centroid_buffer);
             let aCentroid = gl.getAttribLocation(shaderprogram, "aCentroid");
             if (aCentroid !== -1) {
@@ -83,9 +83,9 @@
          }
 
          /**
-          * This function initialises an object. It uploads all its arrays to the GPU
+          * Here we initialise an object. It uploads all its arrays to the GPU
           * and records the references to each. We can then pass this object to drawObject
-          * which will bind the arrays appropriately
+          * which will bind the arrays
           * 
           * @param   object         An object containing arrays for vertices, colors, normals, texcoords, and indices
           * @param   shaderprogram  a shader program returned by createProgram
@@ -93,8 +93,7 @@
         function initObject(object, shaderprogram) {
             gl.useProgram(shaderprogram);
 
-            // Vertices, colors and indices arrive in the form of 2D matrix objects for ease of manipulation
-            // We need to flatten them and convert them to JS arrays before passing them to WebGL
+            // Since all the arrays come in the form of 2D matrix objects, we need to flatten them
             let vertices = object.vertices.flat();
             let colors = object.colors.flat();
             let indices = object.indices.flat();
@@ -146,7 +145,7 @@
         }
 
          /**
-          * This function compiles the supplied vertex and fragment shaders into a program
+          * Compiling the supplied vertex and fragment shaders into a program
           * 
           * @param   vertCode  Vertex shader code, written in GLSL
           * @param   fragCode  Fragment shader code, written in GLSL
@@ -280,7 +279,7 @@
           * Create a sphere with the specified parameters
           * 
           * @param radius The radius of the sphere
-          * @param detail Number of subdivisions (higher = smoother sphere)
+          * @param detail Number of subdivisions (higher = smoother)
           * @param color Color of the sphere
           * @returns Object with vertices, colors, indices, normals and texture coordinates
           */
@@ -539,13 +538,10 @@
             };
         }
 
-        // Add this after your ground() function
         function path() {
-            // Define a simple path from the edge toward the house
             const pathWidth = 0.5;
             const pathLength = 3.0;
             
-            // Define vertices for a path starting from front (z-) direction
             // Set y-coordinate slightly above ground to prevent z-fighting
             let vertices = [
                 // Left edge of path
@@ -597,13 +593,12 @@
             };
         }
 
-        // Add after the path() function
         function curvedPath() {
-            const segments = 7;            // More segments for smoother curve
-            const pathWidth = 0.3;         // Thinner path
-            const pathLength = 0.6;        // Shorter segments for better control
-            const curveAmount = 0.3;       // Increase curve amount
-            const startDistance = -4.0;    // Start further away
+            const segments = 7;           
+            const pathWidth = 0.3;         
+            const pathLength = 0.6;       
+            const curveAmount = 0.3;       
+            const startDistance = -4.0;   
             
             let vertices = [];
             let colors = [];
@@ -673,7 +668,6 @@
             };
         }
 
-        // Replace your existing tree() function with these two functions
         function treeTrunk() {
             // Tree trunk parameters
             const trunkHeight = 0.6;
@@ -801,12 +795,11 @@
             };
         }
 
-        // Add this function to your code
         function createPhongSphere(radius, detail, position, color) {
-            // Get the sphere object from the existing sphere function
+            // Get the sphere object from the sphere function
             let sphereObject = sphere(radius, detail, color);
             
-            // Initialize the object with your existing initObject function
+            // Initialize the object with initObject function
             let sphereBuffer = initObject(sphereObject, shaderprogram);
             
             // Set up the model matrix for the sphere
@@ -819,7 +812,6 @@
             sphereBuffer.pulseOffset = Math.PI / 4;
             sphereBuffer.baseScale = 1.0;
             
-            // Use brick texture for the sphere (or choose another texture)
             sphereBuffer.texture = glassTexture;
             
             return sphereBuffer;
@@ -827,8 +819,7 @@
       </script>
 
       <script>
-         // GLSL shader code
-         // Vertex Shader with improved efficiency
+         // Vertex Shader
          const vertCode = `#version 300 es
          in vec4 aPosition;
          in vec4 aColor;
@@ -882,7 +873,7 @@
              // Calculate ambient component
              vec3 ambient = uAmbientColor * uAmbientIntensity;
             
-             // Combine lighting (pass as a single value - key for flat shading)
+             // Combine lighting (pass as a single value - for flat shading)
              vLighting = ambient + diffuse;
              // --- End Flat Shading Calculation ---
             
@@ -891,7 +882,7 @@
              vTexCoord = aTexCoord;
          }`;
 
-         // Updated fragment shader for shadow mapping
+         // New fragment shader for shadow mapping
          const fragCode = `#version 300 es
          precision mediump float;
 
@@ -948,7 +939,6 @@
       </script>
 
       <script>
-         // Create a canvas to paint on
          var canvas = document.getElementById('gl-canvas');
          var gl = canvas.getContext('webgl2'); // Using WebGL2 for level 4 shadow mapping
          
@@ -961,9 +951,6 @@
          
          // Create shader program
          var shaderprogram = createProgram(vertCode, fragCode);
-
-         // Add this code right after shader program creation and before texture loading
-         // Around line 895, after: var shaderprogram = createProgram(vertCode, fragCode);
 
          // Shadow map setup function
          function setupShadowMap(shadowMapSize = 1024) {
@@ -1032,7 +1019,7 @@
              gl_Position = uLightMatrix * aPosition;
          }`;
 
-         // Shadow map fragment shader - doesn't actually output color values
+         // Shadow map fragment shader - doesn't output color values
          const shadowFragmentShaderCode = `#version 300 es
          precision mediump float;
 
@@ -1041,7 +1028,7 @@
              // Empty - depth is written automatically
          }`;
 
-         // Create the shadow shader program using your existing createProgram function
+         // Create the shadow shader program using createProgram function
          const shadowProgram = createProgram(shadowVertexShaderCode, shadowFragmentShaderCode);
 
          // Get the uniform location for the light matrix in the shadow program
@@ -1049,7 +1036,7 @@
 
          
 
-         // Create a texture loader function
+         // Texture loader function
          function loadTexture(url) {
              const texture = gl.createTexture();
              gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -1063,7 +1050,6 @@
              image.addEventListener("load", function() {
                  gl.bindTexture(gl.TEXTURE_2D, texture);
                  
-                 // Move this line here - right before using the image
                  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
                  
                  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -1081,7 +1067,7 @@
              });
              
              image.addEventListener("error", function(e) {
-                 console.error("Error loading texture:", e, url);
+                 console.error("Error loading texture:", e, url); // Log error
              });
              
              image.src = url;
@@ -1124,8 +1110,8 @@
          let pathBuffer = initObject(pathObject, shaderprogram);
          pathBuffer.texture = stoneTexture;
          pathBuffer.model = mat4.create();
-         pathBuffer.pulseSpeed = 0.0; // Slower pulse for path
-         pathBuffer.pulseOffset = Math.PI / 2; // Out of phase with house
+         pathBuffer.pulseSpeed = 0.0; // No pulse for path
+         pathBuffer.pulseOffset = Math.PI / 2;
          pathBuffer.baseScale = 1.0;
          sceneObjects.push(pathBuffer);
 
@@ -1181,7 +1167,7 @@
          const spherePosition = [0.5, 0.2, 1.5]; // Position the sphere above the ground
          const sphereColor = [0.2, 0.9, 1.0, 1.0]; // Turquoise color
          const sphereRadius = 0.2;
-         const sphereDetail = 16; // Higher values create smoother spheres
+         const sphereDetail = 16; // Higher value -> smoother sphere
 
          // Create the sphere and add it to the scene objects
          let sphereBuffer = createPhongSphere(sphereRadius, sphereDetail, spherePosition, sphereColor);
@@ -1191,8 +1177,7 @@
          let M_model = mat4.create();
          mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view (lvl 1)
          
-         // Create a view matrix (trimetric projection requires specific angles)
-         // Trimetric projection: viewing object from 3 angles, none of which are equal
+         // Create a view matrix (trimetric projection)
          let M_view = mat4.create();
          // Position camera at an angle to see all three dimensions
          mat4.lookAt(
@@ -1238,8 +1223,6 @@
          let normalLoc = gl.getUniformLocation(shaderprogram, "uNormalMatrix");
          gl.uniformMatrix4fv(normalLoc, false, M_normal);
 
-         // Add after your shader uniform setup, before the animation starts
-
          // Set up point light position and color
          const lightPosition = [2.0, 2.0, 2.0]; // Position light above and to the right of scene
          const lightColor = [1.0, 1.0, 0.9];    // Slightly warm light color
@@ -1255,15 +1238,15 @@
          gl.uniform3fv(lightPosLoc, lightPosition);
          gl.uniform3fv(lightColorLoc, lightColor);
 
-         // Get locations for the new uniforms
+         // Get locations for ambient light properties
          const ambientColorLoc = gl.getUniformLocation(shaderprogram, "uAmbientColor");
          const ambientIntensityLoc = gl.getUniformLocation(shaderprogram, "uAmbientIntensity");
          const attenuationFactorLoc = gl.getUniformLocation(shaderprogram, "uAttenuationFactor");
 
          // Set initial values for the new uniforms
-         gl.uniform3f(ambientColorLoc, ambientColor[0], ambientColor[1], ambientColor[2]); // Updated line
-         gl.uniform1f(ambientIntensityLoc, ambientIntensity);            // Ambient intensity (30%)
-         gl.uniform1f(attenuationFactorLoc, attenuationFactor);          // Lower value for less attenuation
+         gl.uniform3f(ambientColorLoc, ambientColor[0], ambientColor[1], ambientColor[2]); 
+         gl.uniform1f(ambientIntensityLoc, ambientIntensity);           
+         gl.uniform1f(attenuationFactorLoc, attenuationFactor);       
 
          // Add this function to calculate the light's view and projection matrices
          function createLightViewProjection(lightPosition, targetPosition, upVector, bounds) {
@@ -1272,12 +1255,12 @@
              mat4.lookAt(
                  lightViewMatrix,
                  lightPosition,      // Light position
-                 targetPosition,     // Target (scene center usually)
+                 targetPosition,     // Target
                  upVector            // Up vector
              );
              
-             // Create the light's projection matrix (orthographic for directional light)
-             // Use an orthographic projection to avoid perspective distortion in shadows
+             // Light's projection matrix (orthographic for directional light)
+             // Orthographic projection is used to avoid perspective distortion in shadows
              const lightProjectionMatrix = mat4.create();
              mat4.ortho(
                  lightProjectionMatrix,
@@ -1297,10 +1280,10 @@
              };
          }
 
-         // Create the light matrices - adjust these values based on your scene size
+         // Create the light matrices 
          const lightMatrices = createLightViewProjection(
-             lightPosition,             // Use your existing light position
-             [0, 0, 0],                 // Target the center of your scene
+             lightPosition,             // Use existing light position
+             [0, 0, 0],                 // Target the center of the scene
              [0, 1, 0],                 // Up vector
              {
                  left: -5, right: 5,    // Scene bounds
@@ -1314,18 +1297,17 @@
          const shadowBiasUniformLoc = gl.getUniformLocation(shaderprogram, "uShadowBias");
          const lightMatrixUniformLoc = gl.getUniformLocation(shaderprogram, "uLightMatrix");
 
-         // Set the shadow bias - adjust this value if you see shadow acne
+         // Set the shadow bias (tweak if theres shadow acne)
          gl.uniform1f(shadowBiasUniformLoc, 0.005);
 
          // Set up texture uniform
          let texLoc = gl.getUniformLocation(shaderprogram, "uTexture");
          gl.uniform1i(texLoc, 0); // Use texture unit 0
          
-         // Animation variables - define lastTime properly
          let angle = 0;
          let lastTime = null; // Use null instead of 0 to make it easier to check
 
-         // Modified render function for shadow mapping
+         // Modified render function that has shadow mapping
          function render(currentTime) {
             // Convert to seconds and calculate delta time
             currentTime *= 0.001;
@@ -1347,7 +1329,7 @@
             gl.useProgram(shaderprogram);
             gl.uniform3fv(lightPosLoc, dynamicLightPosition);
             
-            // Animate ambient intensity (optional)
+            // Animate ambient intensity
             const cycleIntensity = 0.4 + 0.1 * Math.sin(currentTime * 0.1);
             gl.uniform1f(ambientIntensityLoc, cycleIntensity);
             
@@ -1362,6 +1344,8 @@
                     near: 0.1, far: 15
                 }
             );
+
+            // LEVEL 4 SHADOW MAPPING
             
             //--------------------------------------------------------------------
             // FIRST PASS: Render to shadow map from light's perspective
@@ -1376,10 +1360,6 @@
             
             // Use the shadow program
             gl.useProgram(shadowProgram);
-            
-            // Disable face culling or use gl.FRONT to avoid peter panning
-            // gl.enable(gl.CULL_FACE);
-            // gl.cullFace(gl.FRONT);
             
             // Render each object to the shadow map
             for (let i = 0; i < sceneObjects.length; i++) {
@@ -1399,18 +1379,15 @@
                 // Set the light MVP matrix uniform for this object
                 gl.uniformMatrix4fv(lightMatrixLoc, false, lightMVP);
                 
-                // Draw the object (simplified - only position attribute needed)
+                // Draw the object
                 drawObjectForShadow(sceneObjects[i], shadowProgram);
             }
-            
-            // Reset culling to normal
-            // gl.cullFace(gl.BACK);
             
             //--------------------------------------------------------------------
             // SECOND PASS: Render scene with shadows from camera's perspective
             //--------------------------------------------------------------------
             
-            // Bind the default framebuffer (render to canvas)
+            // Bind the default framebuffer (to canvas)
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.viewport(0, 0, canvas.width, canvas.height);
             
@@ -1436,9 +1413,7 @@
             gl.uniformMatrix4fv(projLoc, false, M_proj);
             
             // Render each object again from camera perspective with shadows
-            for (let i = 0; i < sceneObjects.length; i++) {
-                // We already updated the model matrix in the first pass
-                
+            for (let i = 0; i < sceneObjects.length; i++) {                
                 // Calculate normal matrix for this object
                 let M_modelView = mat4.create();
                 let M_normal = mat4.create();
@@ -1494,7 +1469,7 @@
             }
          }
 
-         // Function to draw objects for shadow map (simplified)
+         // Function to draw objects for shadow map
          function drawObjectForShadow(bufferObject, shadowProgram) {
             let vertex_buffer = bufferObject.vertex_buffer;
             let index_buffer = bufferObject.index_buffer;
@@ -1520,10 +1495,10 @@
          requestAnimationFrame(render);
          
          // Debug info
-         console.log("WebGL initialized");
-         console.log("View Matrix:", M_view);
-         console.log("Projection Matrix:", M_proj);
-         console.log("Model Matrix:", M_model);
+        //  console.log("WebGL initialized");
+        //  console.log("View Matrix:", M_view);
+        //  console.log("Projection Matrix:", M_proj);
+        //  console.log("Model Matrix:", M_model);
       </script>
    </body>
 </html>
