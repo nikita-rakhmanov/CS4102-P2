@@ -81,7 +81,7 @@
           * @param   object         An object containing arrays for vertices, colors, normals, texcoords, and indices
           * @param   shaderprogram  a shader program returned by createProgram
           */
-         function initObject(object, shaderprogram) {
+        function initObject(object, shaderprogram) {
             gl.useProgram(shaderprogram);
 
             // Vertices, colors and indices arrive in the form of 2D matrix objects for ease of manipulation
@@ -107,40 +107,6 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, normal_buffer);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
 
-            // Create and load texture
-            let texture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            
-            // Fill with a temporary single pixel until image loads
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, 
-                         new Uint8Array([255, 0, 0, 255])); // Red placeholder
-
-            // Load image
-            let image = new Image();
-            image.addEventListener("load", function() {
-                gl.bindTexture(gl.TEXTURE_2D, texture);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-                
-                // Set texture parameters
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-                
-                gl.generateMipmap(gl.TEXTURE_2D);
-                
-                // Force a redraw after texture loads
-                requestAnimationFrame(render);
-            });
-            
-            image.addEventListener("error", function(e) {
-                console.error("Error loading texture:", e);
-            });
-            
-            // Using your PNG texture
-            image.src = "brick_texture.png";
-            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-
             // Create and store texture coordinates buffer
             let tex_buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
@@ -152,14 +118,14 @@
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 
             return { 
-               vertex_buffer: vertex_buffer,
-               color_buffer: color_buffer,
-               normal_buffer: normal_buffer,
-               tex_buffer: tex_buffer,
-               index_buffer: index_buffer,
-               numVertices: indices.length 
+                vertex_buffer: vertex_buffer,
+                color_buffer: color_buffer,
+                normal_buffer: normal_buffer,
+                tex_buffer: tex_buffer,
+                index_buffer: index_buffer,
+                numVertices: indices.length 
             };
-         }
+        }
 
          /**
           * This function compiles the supplied vertex and fragment shaders into a program
@@ -336,6 +302,57 @@
                 texcoords: texcoords
             };
         }
+
+        function ground() {
+            // Define a large flat ground plane
+            const size = 8.0;  // Size of the ground plane
+            
+            // Define vertices (a simple quad)
+            let vertices = [
+                [-size, -0.5, -size, 1],  // 0: front-left
+                [size, -0.5, -size, 1],   // 1: front-right
+                [size, -0.5, size, 1],    // 2: back-right
+                [-size, -0.5, size, 1]    // 3: back-left
+            ];
+            
+            // Define triangles
+            let indices = [
+                [0, 1, 2],  // First triangle
+                [0, 2, 3]   // Second triangle
+            ];
+            
+            // Define colors (white to let texture show fully)
+            let colors = [
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0]
+            ];
+            
+            // Define normals (pointing up)
+            let normals = [
+                [0, 1, 0, 0],
+                [0, 1, 0, 0],
+                [0, 1, 0, 0],
+                [0, 1, 0, 0]
+            ];
+            
+            // Define texture coordinates (tiled to make grass look better)
+            let texcoords = [
+                [0.0, 0.0],
+                [4.0, 0.0],  // Repeat texture 4 times in X direction
+                [4.0, 4.0],  // Repeat texture 4 times in both directions
+                [0.0, 4.0]   // Repeat texture 4 times in Z direction
+            ];
+            
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices,
+                normals: normals,
+                texcoords: texcoords
+            };
+        }
       </script>
 
       <script>
@@ -360,7 +377,7 @@
                // Apply all transformations to the vertex position
                gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
                
-               // Simple ambient lighting for now
+               // Simple ambient lighting
                highp vec3 ambientLight = vec3(0.8, 0.8, 0.8);
                
                // Pass variables to fragment shader
@@ -405,10 +422,67 @@
          // Create shader program
          var shaderprogram = createProgram(vertCode, fragCode);
 
-         // Create the house object
+         // Add this after your shader program creation:
+
+         // Create a texture loader function
+         function loadTexture(url) {
+             const texture = gl.createTexture();
+             gl.bindTexture(gl.TEXTURE_2D, texture);
+             
+             // Fill with a single pixel until image loads
+             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, 
+                          new Uint8Array([255, 0, 0, 255]));
+             
+             // Load image
+             const image = new Image();
+             image.addEventListener("load", function() {
+                 gl.bindTexture(gl.TEXTURE_2D, texture);
+                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                 
+                 // Set texture parameters
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                 
+                 gl.generateMipmap(gl.TEXTURE_2D);
+                 
+                 // Force a redraw after texture loads
+                 requestAnimationFrame(render);
+             });
+             
+             image.addEventListener("error", function(e) {
+                 console.error("Error loading texture:", e, url);
+             });
+             
+             image.src = url;
+             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+             
+             return texture;
+         }
+
+         // Load textures
+         const brickTexture = loadTexture("brick_texture.png");
+         const grassTexture = loadTexture("grass_texture.png");  // Make sure you have this file
+
+         // Create objects array
+         let sceneObjects = [];
+
+         // Create the house
          let houseObject = house();
          let houseBuffer = initObject(houseObject, shaderprogram);
-         
+         houseBuffer.texture = brickTexture;
+         houseBuffer.model = mat4.create();
+         mat4.fromScaling(houseBuffer.model, [0.5, 0.5, 0.5]);
+         sceneObjects.push(houseBuffer);
+
+         // Create the ground
+         let groundObject = ground();
+         let groundBuffer = initObject(groundObject, shaderprogram);
+         groundBuffer.texture = grassTexture;
+         groundBuffer.model = mat4.create();
+         sceneObjects.push(groundBuffer);
+
          // Create a model matrix for the house
          let M_model = mat4.create();
          mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view
@@ -419,19 +493,19 @@
          // Position camera at an angle to see all three dimensions
          mat4.lookAt(
             M_view,
-            [2, 1.5, 2],   // Camera position (eye)
-            [0, 0, 0],       // Target point
-            [0, 1, 0]        // Up vector
+            [3, 2.5, 4],              // Camera position (eye)
+            [0, 0, 0],                // Target point (center)
+            [0, 1, 0]                 // Up vector
          );
          
-         // Create an orthographic projection matrix (for trimetric projection)
+         // Create a perspective projection matrix
          let M_proj = mat4.create();
-         // Use orthographic projection rather than perspective
-         mat4.ortho(
+         mat4.perspective(
             M_proj,
-            -2, 2,           // Left, right
-            -1.5, 1.5,       // Bottom, top
-            0.1, 10          // Near, far
+            Math.PI/4,                 // Field of view (45 degrees)
+            canvas.width/canvas.height, // Aspect ratio
+            0.1,                      // Near clipping plane
+            100                       // Far clipping plane
          );
          
          // Create a normal matrix
@@ -472,31 +546,42 @@
          function render(currentTime) {
             // Calculate time difference for smooth animation
             currentTime *= 0.001; // Convert to seconds
-            const deltaTime = currentTime - lastTime || 0.016; // Default to 60fps if first frame
+            const deltaTime = currentTime - lastTime || 0.016;
             lastTime = currentTime;
             
             // Clear the canvas
             glInit();
             
             // Update the rotation angle
-            angle += deltaTime * 0.5; // Half a radian per second
+            angle += deltaTime * 0.5;
             
-            // Update model matrix with rotation
-            mat4.identity(M_model);
-            mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale
-            mat4.rotateY(M_model, M_model, angle); // Rotate around Y axis
-            
-            // Update normal matrix
-            mat4.multiply(M_modelView, M_view, M_model);
-            mat4.invert(M_normal, M_modelView);
-            mat4.transpose(M_normal, M_normal);
-            
-            // Update the uniforms
-            gl.uniformMatrix4fv(modelLoc, false, M_model);
-            gl.uniformMatrix4fv(normalLoc, false, M_normal);
-            
-            // Draw the house
-            drawObject(houseBuffer, shaderprogram);
+            // Draw each object
+            for (let i = 0; i < sceneObjects.length; i++) {
+                // Apply object's model matrix
+                if (i === 0) { // House - animate it
+                    mat4.identity(sceneObjects[i].model);
+                    mat4.fromScaling(sceneObjects[i].model, [0.5, 0.5, 0.5]);
+                    mat4.rotateY(sceneObjects[i].model, sceneObjects[i].model, angle);
+                }
+                
+                // Update normal matrix
+                let M_modelView = mat4.create();
+                let M_normal = mat4.create();
+                mat4.multiply(M_modelView, M_view, sceneObjects[i].model);
+                mat4.invert(M_normal, M_modelView);
+                mat4.transpose(M_normal, M_normal);
+                
+                // Update uniforms
+                gl.uniformMatrix4fv(modelLoc, false, sceneObjects[i].model);
+                gl.uniformMatrix4fv(normalLoc, false, M_normal);
+                
+                // Bind texture
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, sceneObjects[i].texture);
+                
+                // Draw the object
+                drawObject(sceneObjects[i], shaderprogram);
+            }
             
             // Request next frame
             requestAnimationFrame(render);
