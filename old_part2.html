@@ -275,79 +275,6 @@
             // Return as vec4 with w=0 (direction vector)
             return [normal[0], normal[1], normal[2], 0];
          }
-
-         /**
-          * Create a sphere with the specified parameters
-          * 
-          * @param radius The radius of the sphere
-          * @param detail Number of subdivisions (higher = smoother sphere)
-          * @param color Color of the sphere
-          * @returns Object with vertices, colors, indices, normals and texture coordinates
-          */
-         function sphere(radius, detail, color) {
-            if (!color) {
-                color = [1.0, 1.0, 1.0, 1.0]; // Default to white if no color specified
-            }
-            
-            const latitudeBands = detail;
-            const longitudeBands = detail;
-            
-            let vertices = [];
-            let normals = [];
-            let texcoords = [];
-            let colors = [];
-            let indices = [];
-            
-            // Generate vertices, normals and texture coordinates
-            for (let latNumber = 0; latNumber <= latitudeBands; latNumber++) {
-                const theta = latNumber * Math.PI / latitudeBands;
-                const sinTheta = Math.sin(theta);
-                const cosTheta = Math.cos(theta);
-                
-                for (let longNumber = 0; longNumber <= longitudeBands; longNumber++) {
-                    const phi = longNumber * 2 * Math.PI / longitudeBands;
-                    const sinPhi = Math.sin(phi);
-                    const cosPhi = Math.cos(phi);
-                    
-                    // Calculate vertex position
-                    const x = cosPhi * sinTheta;
-                    const y = cosTheta;
-                    const z = sinPhi * sinTheta;
-                    
-                    // Texture coordinates
-                    const u = 1 - (longNumber / longitudeBands);
-                    const v = 1 - (latNumber / latitudeBands);
-                    
-                    // Push vertex, normal, texture coord and color
-                    vertices.push([radius * x, radius * y, radius * z, 1.0]);
-                    normals.push([x, y, z, 0.0]); // Normal is just the normalized position vector
-                    texcoords.push([u, v]);
-                    colors.push(color);
-                }
-            }
-            
-            // Generate indices for triangles
-            for (let latNumber = 0; latNumber < latitudeBands; latNumber++) {
-                for (let longNumber = 0; longNumber < longitudeBands; longNumber++) {
-                    const first = (latNumber * (longitudeBands + 1)) + longNumber;
-                    const second = first + longitudeBands + 1;
-                    
-                    // First triangle
-                    indices.push([first, second, first + 1]);
-                    
-                    // Second triangle
-                    indices.push([second, second + 1, first + 1]);
-                }
-            }
-            
-            return {
-                vertices: vertices,
-                colors: colors,
-                normals: normals,
-                indices: indices,
-                texcoords: texcoords
-            };
-         }
       </script>
       <script>
          /**
@@ -800,30 +727,6 @@
                 texcoords: texcoords
             };
         }
-
-        // Add this function to your code
-        function createPhongSphere(radius, detail, position, color) {
-            // Get the sphere object from the existing sphere function
-            let sphereObject = sphere(radius, detail, color);
-            
-            // Initialize the object with your existing initObject function
-            let sphereBuffer = initObject(sphereObject, shaderprogram);
-            
-            // Set up the model matrix for the sphere
-            sphereBuffer.model = mat4.create();
-            mat4.fromScaling(sphereBuffer.model, [1.0, 1.0, 1.0]);
-            mat4.translate(sphereBuffer.model, sphereBuffer.model, position);
-            
-            // Set animation properties
-            sphereBuffer.pulseSpeed = 0.3;
-            sphereBuffer.pulseOffset = Math.PI / 4;
-            sphereBuffer.baseScale = 1.0;
-            
-            // Use brick texture for the sphere (or choose another texture)
-            sphereBuffer.texture = glassTexture;
-            
-            return sphereBuffer;
-        }
       </script>
 
       <script>
@@ -834,30 +737,37 @@
             attribute vec4 aColor;
             attribute vec4 aNormal;
             attribute vec2 aTexCoord;
+            attribute vec4 aCentroid;
 
             uniform mat4 uModelMatrix;
             uniform mat4 uViewMatrix;
             uniform mat4 uProjectionMatrix;
             uniform mat4 uNormalMatrix;
+            uniform vec3 uLightPosition;
 
             varying vec4 vColor;
             varying vec2 vTexCoord;
-            varying vec3 vNormal;      // Will be interpolated across fragments
-            varying vec3 vWorldPos;    // Need world position for lighting calculation
-
+            varying vec3 vNormal;
+            varying vec3 vLightDir;
+            varying float vLightDistance;
+            
             void main() {
-                // Transform vertex position to clip space
+                // Position calculation
                 gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
                 
-                // Pass world position to fragment shader
-                vec4 worldPosition = uModelMatrix * aPosition;
-                vWorldPos = worldPosition.xyz;
+                // Calculate transformed centroid for flat shading with point light
+                vec4 worldCentroid = uModelMatrix * aCentroid;
                 
-                // Transform normal and pass to fragment shader
+                // Transform normal
                 vec4 transformedNormal = uNormalMatrix * aNormal;
-                vNormal = normalize(transformedNormal.xyz);
+                vNormal = normalize(transformedNormal.xyz); // Pre-normalize in vertex shader
                 
-                // Pass along color and texture coordinates
+                // Calculate light direction and distance for point light
+                vLightDir = uLightPosition - worldCentroid.xyz;
+                vLightDistance = length(vLightDir);
+                vLightDir = normalize(vLightDir); // Pre-normalize in vertex shader
+                
+                // Pass color and texture coordinates
                 vColor = aColor;
                 vTexCoord = aTexCoord;
             }
@@ -866,37 +776,29 @@
          // Fragment Shader with improved efficiency
          const fragCode = `
             precision mediump float;
-
+            
             varying vec4 vColor;
             varying vec2 vTexCoord;
             varying vec3 vNormal;
-            varying vec3 vWorldPos;
-
+            varying vec3 vLightDir;
+            varying float vLightDistance;
+            
             uniform sampler2D uTexture;
-            uniform vec3 uLightPosition;
             uniform vec3 uLightColor;
-            uniform vec3 uAmbientColor;
-            uniform float uAmbientIntensity;
-            uniform float uAttenuationFactor;
-
+            uniform vec3 uAmbientColor;      // Added uniform for ambient color
+            uniform float uAmbientIntensity;  // Added uniform for ambient intensity
+            uniform float uAttenuationFactor; // Added uniform for controlling attenuation
+            
             void main() {
                 // Get texture color
                 vec4 texColor = texture2D(uTexture, vTexCoord);
                 
-                // Ambient component
+                // Ambient component - now uses uniform values
                 vec3 ambient = uAmbientColor * uAmbientIntensity;
                 
-                // Calculate light direction and distance for point light
-                vec3 lightDir = uLightPosition - vWorldPos;
-                float lightDistance = length(lightDir);
-                lightDir = normalize(lightDir);
-                
-                // Normalized normal (may need renormalization after interpolation)
-                vec3 normal = normalize(vNormal);
-                
-                // Calculate diffuse with distance attenuation
-                float attenuation = 1.0 / (1.0 + uAttenuationFactor * lightDistance + 0.01 * lightDistance * lightDistance);
-                float diffuseFactor = max(dot(normal, lightDir), 0.0) * attenuation;
+                // Calculate diffuse with configurable distance attenuation
+                float attenuation = 1.0 / (1.0 + uAttenuationFactor * vLightDistance + 0.01 * vLightDistance * vLightDistance);
+                float diffuseFactor = max(dot(vNormal, vLightDir), 0.0) * attenuation;
                 vec3 diffuse = uLightColor * diffuseFactor;
                 
                 // Combine lighting components
@@ -966,10 +868,9 @@
          }
 
          // Load textures
-         const brickTexture = loadTexture("textures/brick_texture.png");
-         const grassTexture = loadTexture("textures/grass_texture.png");  
-         const stoneTexture = loadTexture("textures/stone_texture.png"); 
-         const glassTexture = loadTexture("textures/glass_texture.png");
+         const brickTexture = loadTexture("brick_texture.png");
+         const grassTexture = loadTexture("grass_texture.png");  
+         const stoneTexture = loadTexture("stone_texture.png"); 
 
          // Create objects array
          let sceneObjects = [];
@@ -1007,8 +908,8 @@
 
 
          // Load tree textures
-         const woodTexture = loadTexture("textures/wood_texture.png");
-         const leafTexture = loadTexture("textures/leaf_texture.png");
+         const woodTexture = loadTexture("wood_texture.png");
+         const leafTexture = loadTexture("leaf_texture.png");
 
          // Create trees
          const treePositions = [
@@ -1052,16 +953,6 @@
              
              sceneObjects.push(crownBuffer);
          }
-
-         // Create and add a sphere to the scene
-         const spherePosition = [0.5, 0.2, 1.5]; // Position the sphere above the ground
-         const sphereColor = [0.2, 0.9, 1.0, 1.0]; // Turquoise color
-         const sphereRadius = 0.2;
-         const sphereDetail = 16; // Higher values create smoother spheres
-
-         // Create the sphere and add it to the scene objects
-         let sphereBuffer = createPhongSphere(sphereRadius, sphereDetail, spherePosition, sphereColor);
-         sceneObjects.push(sphereBuffer);
 
          // Create a model matrix for the house
          let M_model = mat4.create();

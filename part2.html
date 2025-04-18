@@ -1,0 +1,927 @@
+<!doctype html>
+
+<html>
+   <body>
+      <canvas width = "800" height = "600" id = "gl-canvas">
+        Sorry; your web browser does not support HTML5's canvas element.
+      </canvas>
+
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" type="text/javascript"></script>
+      <script>
+         /**
+          * This function initialises GL and the viewport.
+          */
+          function glInit() {
+            // Initialise and clear viewport
+            gl.clearColor(0.1, 0.1, 0.1, 0.9);
+            gl.clearDepth(1.0);
+            gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.enable(gl.DEPTH_TEST);
+            
+            // Transparency support
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+         }
+
+         /**
+          * This function draws an object using the supplied shader program
+          *
+          * @param   bufferObject   An object returned by initObject
+          * @param   shaderprogram  a shader program returned by createProgram
+          */
+         function drawObject(bufferObject, shaderprogram) {
+            // NOTE: No need to call gl.useProgram here if called before the loop in render()
+
+            let vertex_buffer = bufferObject.vertex_buffer;
+            let color_buffer = bufferObject.color_buffer;
+            let normal_buffer = bufferObject.normal_buffer;
+            let tex_buffer = bufferObject.tex_buffer;
+            let centroid_buffer = bufferObject.centroid_buffer; // Make sure this exists
+            let index_buffer = bufferObject.index_buffer;
+            let number = bufferObject.numVertices;
+
+            // Bind vertex buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+            let aPosition = gl.getAttribLocation(shaderprogram, "aPosition");
+            if (aPosition !== -1) { // Check if attribute exists in shader
+                gl.vertexAttribPointer(aPosition, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aPosition);
+            } else { console.warn("aPosition not found in shader"); }
+
+
+            // Bind color buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, color_buffer);
+            let aColor = gl.getAttribLocation(shaderprogram, "aColor");
+            if (aColor !== -1) {
+                gl.vertexAttribPointer(aColor, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aColor);
+             } else { console.warn("aColor not found in shader"); }
+
+            // Bind normal buffer (EXPECTS FACE NORMALS for this shader)
+            gl.bindBuffer(gl.ARRAY_BUFFER, normal_buffer);
+            let aNormal = gl.getAttribLocation(shaderprogram, "aNormal");
+            if (aNormal !== -1) {
+                gl.vertexAttribPointer(aNormal, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aNormal);
+            } else { console.warn("aNormal not found in shader"); }
+
+            // Bind texture coordinate buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
+            let aTexCoord = gl.getAttribLocation(shaderprogram, "aTexCoord");
+            if (aTexCoord !== -1) {
+                gl.vertexAttribPointer(aTexCoord, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aTexCoord);
+            } else { console.warn("aTexCoord not found in shader"); }
+
+            // Bind centroid buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, centroid_buffer);
+            let aCentroid = gl.getAttribLocation(shaderprogram, "aCentroid");
+            if (aCentroid !== -1) {
+                gl.vertexAttribPointer(aCentroid, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aCentroid);
+            } else { console.warn("aCentroid not found in shader"); }
+
+
+            // Bind index buffer and draw
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+            gl.drawElements(gl.TRIANGLES, number, gl.UNSIGNED_SHORT, 0);
+
+            // Optional: Disable arrays after drawing (good practice)
+            if (aPosition !== -1) gl.disableVertexAttribArray(aPosition);
+            if (aColor !== -1) gl.disableVertexAttribArray(aColor);
+            if (aNormal !== -1) gl.disableVertexAttribArray(aNormal);
+            if (aTexCoord !== -1) gl.disableVertexAttribArray(aTexCoord);
+            if (aCentroid !== -1) gl.disableVertexAttribArray(aCentroid);
+         }
+
+         /**
+          * This function initialises an object. It uploads all its arrays to the GPU
+          * and records the references to each. We can then pass this object to drawObject
+          * which will bind the arrays appropriately
+          *
+          * @param   object         An object containing arrays for vertices, colors, normals, texcoords, and indices
+          * @param   shaderprogram  a shader program returned by createProgram
+          */
+        function initObject(object, shaderprogram) {
+            // No need for gl.useProgram here, buffers are independent of current program
+
+            // Flatten data
+            let vertices = object.vertices.flat();
+            let colors = object.colors.flat();
+            let indices = object.indices.flat();
+            let normals = object.normals.flat(); // Should contain FACE normals for flat shading
+            let texcoords = object.texcoords.flat();
+
+            // Calculate centroids - crucial for flat shading with point light
+            let centroids = calculateCentroids(vertices, indices);
+
+            // --- Create and fill buffers ---
+            let vertex_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            let color_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, color_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+            let normal_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, normal_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+            let tex_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+
+            // Centroid buffer
+            let centroid_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, centroid_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(centroids), gl.STATIC_DRAW);
+
+            let index_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            // Unbind buffers (good practice)
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+
+            return {
+                vertex_buffer: vertex_buffer,
+                color_buffer: color_buffer,
+                normal_buffer: normal_buffer,
+                tex_buffer: tex_buffer,
+                centroid_buffer: centroid_buffer, // Return the centroid buffer
+                index_buffer: index_buffer,
+                numVertices: indices.length,
+                // --- Store object-specific properties ---
+                texture: null, // Assign later
+                model: mat4.create(), // Assign later
+                pulseSpeed: 0.0, // Assign later
+                pulseOffset: 0.0, // Assign later
+                baseScale: 1.0 // Assign later
+            };
+        }
+
+         /**
+          * This function compiles the supplied vertex and fragment shaders into a program
+          *
+          * @param   vertCode  Vertex shader code, written in GLSL
+          * @param   fragCode  Fragment shader code, written in GLSL
+          *
+          * @returns    Shader program
+          */
+         function createProgram(vertCode, fragCode) {
+            // Compile and upload shader programs
+            let vertShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertShader, vertCode);
+            gl.compileShader(vertShader);
+
+            // Check for compilation errors
+            if (!gl.getShaderParameter(vertShader, gl.COMPILE_STATUS)) {
+               console.error('Vertex shader compilation error: ' + gl.getShaderInfoLog(vertShader));
+               return null; // Return null on error
+            }
+
+            let fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragShader, fragCode);
+            gl.compileShader(fragShader);
+
+            // Check for compilation errors
+            if (!gl.getShaderParameter(fragShader, gl.COMPILE_STATUS)) {
+               console.error('Fragment shader compilation error: ' + gl.getShaderInfoLog(fragShader));
+               return null; // Return null on error
+            }
+
+            let shaderprogram = gl.createProgram();
+            gl.attachShader(shaderprogram, vertShader);
+            gl.attachShader(shaderprogram, fragShader);
+            gl.linkProgram(shaderprogram);
+
+            // Check for linking errors
+            if (!gl.getProgramParameter(shaderprogram, gl.LINK_STATUS)) {
+               console.error('Shader program linking error: ' + gl.getProgramInfoLog(shaderprogram));
+               return null; // Return null on error
+            }
+
+            // Don't use program here, use it before drawing
+
+            return shaderprogram;
+         }
+
+         /**
+          * Calculates the centroid of each triangle for flat shading with point light source
+          * Assumes vertices is a flat array [x1,y1,z1,w1, x2,y2,z2,w2, ...]
+          * Assumes indices is a flat array [i1, i2, i3, i4, i5, i6, ...]
+          * @param {Array} vertices - Flattened array of vertex positions
+          * @param {Array} indices - Array of triangle indices
+          * @returns {Array} - Flattened array of centroids [cx,cy,cz,1, cx,cy,cz,1, ...] repeated for each vertex
+          */
+         function calculateCentroids(vertices, indices) {
+             let centroids = new Float32Array(vertices.length); // Same size as vertices
+             if (vertices.length === 0 || indices.length === 0) return centroids;
+
+             for (let i = 0; i < indices.length; i += 3) {
+                 const idx1 = indices[i];
+                 const idx2 = indices[i + 1];
+                 const idx3 = indices[i + 2];
+
+                 // Calculate vertex positions (offset by 4 for x,y,z,w)
+                 const v1x = vertices[idx1 * 4 + 0];
+                 const v1y = vertices[idx1 * 4 + 1];
+                 const v1z = vertices[idx1 * 4 + 2];
+
+                 const v2x = vertices[idx2 * 4 + 0];
+                 const v2y = vertices[idx2 * 4 + 1];
+                 const v2z = vertices[idx2 * 4 + 2];
+
+                 const v3x = vertices[idx3 * 4 + 0];
+                 const v3y = vertices[idx3 * 4 + 1];
+                 const v3z = vertices[idx3 * 4 + 2];
+
+                 // Calculate centroid
+                 const centroidX = (v1x + v2x + v3x) / 3.0;
+                 const centroidY = (v1y + v2y + v3y) / 3.0;
+                 const centroidZ = (v1z + v2z + v3z) / 3.0;
+
+                 // Assign the *same* centroid to all three vertices of this triangle
+                 // Vertex 1
+                 centroids[idx1 * 4 + 0] = centroidX;
+                 centroids[idx1 * 4 + 1] = centroidY;
+                 centroids[idx1 * 4 + 2] = centroidZ;
+                 centroids[idx1 * 4 + 3] = 1.0; // W component
+
+                 // Vertex 2
+                 centroids[idx2 * 4 + 0] = centroidX;
+                 centroids[idx2 * 4 + 1] = centroidY;
+                 centroids[idx2 * 4 + 2] = centroidZ;
+                 centroids[idx2 * 4 + 3] = 1.0;
+
+                 // Vertex 3
+                 centroids[idx3 * 4 + 0] = centroidX;
+                 centroids[idx3 * 4 + 1] = centroidY;
+                 centroids[idx3 * 4 + 2] = centroidZ;
+                 centroids[idx3 * 4 + 3] = 1.0;
+             }
+             return centroids;
+         }
+
+
+         /**
+          * Calculate a normal vector for a triangle face defined by 3 points
+          * @param {Array} v1 - First vertex [x, y, z]
+          * @param {Array} v2 - Second vertex [x, y, z]
+          * @param {Array} v3 - Third vertex [x, y, z]
+          * @returns {Array} - Normalized normal vector [x, y, z, 0]
+          */
+         function calculateFaceNormal(v1, v2, v3) {
+            const U = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+            const V = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+
+            let normal = [
+                U[1] * V[2] - U[2] * V[1],
+                U[2] * V[0] - U[0] * V[2],
+                U[0] * V[1] - U[1] * V[0]
+            ];
+
+            const length = Math.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2);
+            if (length > 0.00001) { // Avoid division by zero
+                normal[0] /= length;
+                normal[1] /= length;
+                normal[2] /= length;
+            } else {
+                // Handle degenerate triangle case (e.g., return up vector)
+                return [0, 1, 0, 0];
+            }
+
+            return [normal[0], normal[1], normal[2], 0.0]; // w=0 for direction
+         }
+      </script>
+      <script>
+        // --- Object Definition Functions ---
+         /**
+          * Create a house shape with at least 8 faces
+          * Provides FACE NORMALS suitable for flat shading.
+          * @returns    object consisting of vertices, colors, normals, texcoords, and indices
+          */
+         function house() {
+             const width = 0.8;
+             const length = 1.0;
+             const height = 0.6;
+             const roofHeight = 0.4;
+             const w2 = width / 2;
+             const l2 = length / 2;
+
+             // Unique vertex positions
+             const positions = [
+                 /* 0 */ [-w2, -height / 2, -l2], /* 1 */ [w2, -height / 2, -l2], /* 2 */ [w2, -height / 2, l2], /* 3 */ [-w2, -height / 2, l2], // Floor
+                 /* 4 */ [-w2, height / 2, -l2], /* 5 */ [w2, height / 2, -l2], /* 6 */ [w2, height / 2, l2], /* 7 */ [-w2, height / 2, l2], // Wall Top
+                 /* 8 */ [0, height / 2 + roofHeight, -l2], /* 9 */ [0, height / 2 + roofHeight, l2] // Roof Ridge
+             ];
+
+             // Define faces by unique position indices
+             const faces = [
+                 // Floor (y-) - facing down
+                 { indices: [0, 3, 2], tc: [[0, 0], [0, 1], [1, 1]] }, { indices: [0, 2, 1], tc: [[0, 0], [1, 1], [1, 0]] },
+                 // Front Wall (z-)
+                 { indices: [0, 1, 5], tc: [[0, 0], [1, 0], [1, 1]] }, { indices: [0, 5, 4], tc: [[0, 0], [1, 1], [0, 1]] },
+                 // Right Wall (x+)
+                 { indices: [1, 2, 6], tc: [[0, 0], [1, 0], [1, 1]] }, { indices: [1, 6, 5], tc: [[0, 0], [1, 1], [0, 1]] },
+                  // Back Wall (z+)
+                 { indices: [2, 3, 7], tc: [[0, 0], [1, 0], [1, 1]] }, { indices: [2, 7, 6], tc: [[0, 0], [1, 1], [0, 1]] },
+                  // Left Wall (x-)
+                 { indices: [3, 0, 4], tc: [[0, 0], [1, 0], [1, 1]] }, { indices: [3, 4, 7], tc: [[0, 0], [1, 1], [0, 1]] },
+                  // Front Roof Slope
+                 { indices: [4, 5, 8], tc: [[0, 1], [1, 1], [0.5, 0]] },
+                  // Back Roof Slope
+                 { indices: [6, 7, 9], tc: [[1, 1], [0, 1], [0.5, 0]] },
+                  // Roof Side Right
+                 { indices: [5, 6, 9], tc: [[0, 1], [1, 1], [1, 0]] }, { indices: [5, 9, 8], tc: [[0, 1], [1, 0], [0, 0]] },
+                   // Roof Side Left
+                 { indices: [7, 4, 8], tc: [[1, 1], [0, 1], [0, 0]] }, { indices: [7, 8, 9], tc: [[1, 1], [0, 0], [1, 0]] }
+             ];
+
+             let vertices = [];
+             let colors = [];
+             let normals = [];
+             let texcoords = [];
+             let indices = [];
+             let vertexCount = 0;
+
+             const defaultColor = [1.0, 1.0, 1.0, 1.0];
+
+             faces.forEach(face => {
+                 const v1 = positions[face.indices[0]];
+                 const v2 = positions[face.indices[1]];
+                 const v3 = positions[face.indices[2]];
+
+                 // Calculate face normal ONCE per face
+                 const faceNormal = calculateFaceNormal(v1, v2, v3);
+
+                 // Add vertices, colors, normals (same face normal), and texcoords for this triangle
+                 for (let i = 0; i < 3; i++) {
+                     const posIndex = face.indices[i];
+                     vertices.push(...positions[posIndex], 1.0); // Add x,y,z,w
+                     colors.push(...defaultColor);
+                     normals.push(...faceNormal); // Use the calculated face normal
+                     texcoords.push(...face.tc[i]);
+                 }
+                 // Add indices for this triangle
+                 indices.push(vertexCount, vertexCount + 1, vertexCount + 2);
+                 vertexCount += 3;
+             });
+
+             return { vertices, colors, normals, texcoords, indices };
+         }
+
+
+        function ground() {
+            const size = 4.0;
+            // Define vertices for the face
+            const positions = [
+                [-size, -0.5, -size], // 0
+                [size, -0.5, -size],  // 1
+                [size, -0.5, size],   // 2
+                [-size, -0.5, size]   // 3
+            ];
+            const tc = [ [0, 0], [4, 0], [4, 4], [0, 4] ]; // Tiled tex coords
+            const faceNormal = [0, 1, 0, 0]; // Simple upward normal
+            const defaultColor = [1.0, 1.0, 1.0, 1.0];
+
+            let vertices = [], colors = [], normals = [], texcoords = [], indices = [];
+             // Triangle 1: 0, 1, 2
+            [0, 1, 2].forEach((idx, i) => {
+                vertices.push(...positions[idx], 1.0); colors.push(...defaultColor); normals.push(...faceNormal); texcoords.push(...tc[idx]);
+            });
+            indices.push(0, 1, 2);
+            // Triangle 2: 0, 2, 3
+            [0, 2, 3].forEach((idx, i) => {
+                vertices.push(...positions[idx], 1.0); colors.push(...defaultColor); normals.push(...faceNormal); texcoords.push(...tc[idx]);
+            });
+             indices.push(3, 4, 5);
+
+             return { vertices, colors, normals, texcoords, indices };
+        }
+
+        function curvedPath() {
+            const segments = 7;
+            const pathWidth = 0.3;
+            const pathLength = 0.6;
+            const curveAmount = 0.3;
+            const startDistance = -4.0;
+            const yLevel = -0.49; // Slightly above ground
+
+            let vertices = [], colors = [], normals = [], texcoords = [], indices = [];
+            let currentAngle = 0;
+            let lastX = 0;
+            let lastZ = startDistance;
+            let vertexCount = 0;
+            const defaultColor = [1.0, 1.0, 1.0, 1.0];
+            const faceNormal = [0, 1, 0, 0]; // Path faces up
+
+            for (let i = 0; i < segments; i++) {
+                currentAngle += curveAmount * (Math.sin(i / segments * Math.PI));
+                let nextX = lastX + pathLength * Math.sin(currentAngle);
+                let nextZ = lastZ + pathLength * Math.cos(currentAngle);
+
+                if (nextZ > -0.6) break;
+
+                // Calculate segment corners
+                const cosA = Math.cos(currentAngle);
+                const sinA = Math.sin(currentAngle);
+                const w2c = pathWidth / 2 * cosA;
+                const w2s = pathWidth / 2 * sinA;
+
+                const p0 = [lastX - w2c, yLevel, lastZ + w2s]; // prev left
+                const p1 = [lastX + w2c, yLevel, lastZ - w2s]; // prev right
+                const p2 = [nextX + w2c, yLevel, nextZ - w2s]; // next right
+                const p3 = [nextX - w2c, yLevel, nextZ + w2s]; // next left
+
+                const segmentVertices = [p0, p1, p2, p3];
+                const segmentTexCoords = [ [0.0, i], [1.0, i], [1.0, i + 1], [0.0, i + 1] ];
+
+                 // Add quad for this segment (2 triangles)
+                 // Triangle 1: 0, 1, 2
+                 [0, 1, 2].forEach(idx => {
+                     vertices.push(...segmentVertices[idx], 1.0); colors.push(...defaultColor); normals.push(...faceNormal); texcoords.push(...segmentTexCoords[idx]);
+                 });
+                 indices.push(vertexCount + 0, vertexCount + 1, vertexCount + 2);
+
+                 // Triangle 2: 0, 2, 3
+                 [0, 2, 3].forEach(idx => {
+                     vertices.push(...segmentVertices[idx], 1.0); colors.push(...defaultColor); normals.push(...faceNormal); texcoords.push(...segmentTexCoords[idx]);
+                 });
+                 indices.push(vertexCount + 3, vertexCount + 4, vertexCount + 5);
+
+                 vertexCount += 6;
+                 lastX = nextX;
+                 lastZ = nextZ;
+            }
+             return { vertices, colors, normals, texcoords, indices };
+        }
+
+
+        function treeTrunk() {
+             const trunkHeight = 0.6;
+             const trunkRadius = 0.1;
+             const segments = 8;
+             const trunkBottomY = -0.5;
+             const trunkColor = [0.6, 0.4, 0.2, 1.0];
+
+             let vertices = [], colors = [], normals = [], texcoords = [], indices = [];
+             let vertexCount = 0;
+
+             // Generate vertices for sides
+             let sideVertices = [];
+             for (let i = 0; i <= segments; i++) {
+                 const angle = (i / segments) * Math.PI * 2;
+                 const x = trunkRadius * Math.cos(angle);
+                 const z = trunkRadius * Math.sin(angle);
+                 const u = i / segments;
+                 sideVertices.push({ pos: [x, trunkBottomY, z], norm: [x / trunkRadius, 0, z / trunkRadius], tc: [u, 0] }); // Bottom
+                 sideVertices.push({ pos: [x, trunkBottomY + trunkHeight, z], norm: [x / trunkRadius, 0, z / trunkRadius], tc: [u, 1] }); // Top
+             }
+
+             // Create side faces (quads as two triangles)
+             for (let i = 0; i < segments; i++) {
+                 const i0 = i * 2; const i1 = i0 + 1; const i2 = i0 + 2; const i3 = i0 + 3;
+                 const v0 = sideVertices[i0]; const v1 = sideVertices[i1]; const v2 = sideVertices[i2]; const v3 = sideVertices[i3];
+
+                 // Calculate face normal for this quad section
+                 const faceNormal = calculateFaceNormal(v0.pos, v1.pos, v2.pos); // Use positions to calc normal
+
+                 // Triangle 1: v0, v1, v2
+                 [v0, v1, v2].forEach(v => {
+                     vertices.push(...v.pos, 1.0); colors.push(...trunkColor); normals.push(...faceNormal); texcoords.push(...v.tc);
+                 });
+                 indices.push(vertexCount + 0, vertexCount + 1, vertexCount + 2);
+
+                 // Triangle 2: v1, v3, v2
+                 [v1, v3, v2].forEach(v => {
+                     vertices.push(...v.pos, 1.0); colors.push(...trunkColor); normals.push(...faceNormal); texcoords.push(...v.tc);
+                 });
+                 indices.push(vertexCount + 3, vertexCount + 4, vertexCount + 5);
+
+                 vertexCount += 6;
+             }
+             // Note: Top/Bottom caps are omitted for simplicity here, but could be added
+              return { vertices, colors, normals, texcoords, indices };
+         }
+
+        function treeCrown() {
+            const trunkHeight = 0.6;
+            const crownHeight = 0.8;
+            const crownRadius = 0.4;
+            const segments = 8;
+            const trunkBottomY = -0.5;
+            const crownBaseY = trunkBottomY + trunkHeight;
+            const crownTopY = crownBaseY + crownHeight;
+            const crownColor = [0.0, 0.8, 0.0, 1.0];
+
+            let vertices = [], colors = [], normals = [], texcoords = [], indices = [];
+            let vertexCount = 0;
+
+            // Top vertex
+            const topVertex = [0, crownTopY, 0];
+            const topTexCoord = [0.5, 1.0]; // Texcoord for top
+
+            // Base vertices
+            let baseVertices = [];
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x = crownRadius * Math.cos(angle);
+                const z = crownRadius * Math.sin(angle);
+                baseVertices.push({ pos: [x, crownBaseY, z], tc: [i / segments, 0] });
+            }
+
+            // Create side faces (triangles pointing to top)
+            for (let i = 0; i < segments; i++) {
+                const v1 = baseVertices[i].pos;
+                const v2 = baseVertices[i+1].pos;
+                const v3 = topVertex;
+                const tc1 = baseVertices[i].tc;
+                const tc2 = baseVertices[i+1].tc;
+                const tc3 = topTexCoord;
+
+                const faceNormal = calculateFaceNormal(v1, v2, v3);
+
+                // Add vertices for this triangle face
+                vertices.push(...v1, 1.0); colors.push(...crownColor); normals.push(...faceNormal); texcoords.push(...tc1);
+                vertices.push(...v2, 1.0); colors.push(...crownColor); normals.push(...faceNormal); texcoords.push(...tc2);
+                vertices.push(...v3, 1.0); colors.push(...crownColor); normals.push(...faceNormal); texcoords.push(...tc3);
+
+                indices.push(vertexCount + 0, vertexCount + 1, vertexCount + 2);
+                vertexCount += 3;
+            }
+
+            // Note: Base cap is omitted for simplicity
+             return { vertices, colors, normals, texcoords, indices };
+        }
+
+      </script>
+
+      <script> // <<< SCRIPT FOR SHADERS >>>
+         // GLSL shader code FOR FLAT SHADING (Part 2)
+
+         // Vertex Shader (Calculates Flat Lighting)
+         const vertCode_Flat = `
+            attribute vec4 aPosition;
+            attribute vec4 aColor;
+            attribute vec4 aNormal;      // Expecting FACE normal here
+            attribute vec2 aTexCoord;
+            attribute vec4 aCentroid;    // Expecting Triangle Centroid
+
+            uniform mat4 uModelMatrix;
+            uniform mat4 uViewMatrix;
+            uniform mat4 uProjectionMatrix;
+            uniform mat4 uNormalMatrix;
+
+            // Uniforms needed for lighting calculation IN VERTEX SHADER
+            uniform vec3 uLightPosition; // World space
+            uniform vec3 uLightColor;
+            uniform vec3 uAmbientColor;
+            uniform float uAmbientIntensity;
+            uniform float uAttenuationFactor;
+
+            varying vec4 vColor;
+            varying vec2 vTexCoord;
+            varying vec3 vLighting; // Pass calculated lighting intensity
+
+            void main() {
+                // Standard position calculation
+                gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
+
+                // --- Flat Shading Calculation ---
+                // Transform face normal (aNormal) - Already normalized in JS if using calculateFaceNormal
+                // We still need to transform its direction based on model orientation
+                vec3 faceNormal = normalize((uNormalMatrix * aNormal).xyz);
+
+                // Transform centroid to world space
+                vec4 worldCentroid = uModelMatrix * aCentroid;
+
+                // Calculate light vector from light source TO CENTROID
+                vec3 lightDir = uLightPosition - worldCentroid.xyz; // Vector from centroid to light
+                float lightDistance = length(lightDir);
+                lightDir = normalize(lightDir); // Normalize direction
+
+                // Calculate attenuation based on distance to centroid
+                // Using inverse square falloff + linear + constant term
+                float attenuation = 1.0 / (1.0 + uAttenuationFactor * lightDistance + (uAttenuationFactor * 0.1) * lightDistance * lightDistance); // Added quadratic term too
+
+                // Calculate diffuse factor using FACE normal and centroid-based light vector
+                float diffuseFactor = max(dot(faceNormal, lightDir), 0.0);
+                vec3 diffuse = uLightColor * diffuseFactor * attenuation;
+
+                // Calculate ambient component
+                vec3 ambient = uAmbientColor * uAmbientIntensity;
+
+                // Combine lighting (pass this single value)
+                // Clamp to prevent overly bright colors if needed, though often not necessary here
+                vLighting = ambient + diffuse;
+                // --- End Flat Shading Calculation ---
+
+                // Pass along color and texture coordinates
+                vColor = aColor;
+                vTexCoord = aTexCoord;
+            }
+         `;
+
+         // Fragment Shader (Applies Pre-calculated Flat Lighting)
+         const fragCode_Flat = `
+            precision mediump float;
+
+            varying vec4 vColor;
+            varying vec2 vTexCoord;
+            varying vec3 vLighting; // Receive pre-calculated lighting intensity (ambient+diffuse)
+
+            uniform sampler2D uTexture; // Still need texture sampler
+
+            void main() {
+                // Get texture color
+                vec4 texColor = texture2D(uTexture, vTexCoord);
+
+                // Apply the pre-calculated lighting to texture & vertex color
+                // But preserve alpha from texture
+                gl_FragColor = vec4(texColor.rgb * vColor.rgb * vLighting, texColor.a);
+            }
+         `;
+      </script>
+
+      <script> // <<< MAIN SCRIPT >>>
+         // Create a canvas to paint on
+         var canvas = document.getElementById('gl-canvas');
+         var gl = canvas.getContext('webgl');
+
+         if (!gl) {
+            console.error("WebGL isn't available");
+            // Maybe display a message to the user on the page
+         } else {
+            console.log("WebGL context obtained.");
+
+            // Initialize GL
+            glInit();
+
+            // --- Create the FLAT SHADING Shader Program ---
+            console.log("Creating flat shader program...");
+            var shaderprogram_flat = createProgram(vertCode_Flat, fragCode_Flat);
+
+            if (!shaderprogram_flat) {
+                 console.error("Failed to create flat shader program. Stopping.");
+            } else {
+                console.log("Flat shader program created successfully.");
+
+                 // --- Texture Loading ---
+                 // Create a texture loader function
+                 function loadTexture(url) {
+                     const texture = gl.createTexture();
+                     gl.bindTexture(gl.TEXTURE_2D, texture);
+                     
+                     // Fill with a single transparent pixel until image loads
+                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, 
+                                  new Uint8Array([255, 0, 1208, 0])); // Transparent
+                     
+                     // Load image
+                     const image = new Image();
+                     image.addEventListener("load", function() {
+                         gl.bindTexture(gl.TEXTURE_2D, texture);
+                         
+                         // Flip the image's y-axis to match WebGL's coordinate system
+                         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                         
+                         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                         
+                         // Set texture parameters
+                         if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
+                             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                             gl.generateMipmap(gl.TEXTURE_2D);
+                         } else {
+                             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                         }
+                         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                         
+                         console.log("Texture loaded:", url);
+                     });
+                     
+                     image.addEventListener("error", function() {
+                         console.error("Error loading texture:", url);
+                     });
+                     
+                     image.src = url;
+                     
+                     return texture;
+                 }
+
+                 function isPowerOf2(value) {
+                     return (value & (value - 1)) == 0;
+                 }
+
+                 // Load textures
+                 console.log("Loading textures...");
+                 const brickTexture = loadTexture("textures/brick_texture.png");
+                 const grassTexture = loadTexture("textures/grass_texture.png");
+                 const stoneTexture = loadTexture("textures/stone_texture.png");
+                 const woodTexture = loadTexture("textures/wood_texture.png");
+                 const leafTexture = loadTexture("textures/leaf_texture.png");
+
+
+                 // --- Create Scene Objects ---
+                 console.log("Creating scene objects...");
+                 let sceneObjects = [];
+
+                 // Create the house
+                 let houseObjectData = house();
+                 let houseBuffer = initObject(houseObjectData, shaderprogram_flat); // Pass shader to init
+                 if (houseBuffer) {
+                    houseBuffer.texture = brickTexture;
+                    houseBuffer.baseScale = 0.8;
+                    houseBuffer.pulseSpeed = 0.6;
+                    houseBuffer.pulseOffset = 0;
+                    sceneObjects.push(houseBuffer);
+                    console.log("House object created.");
+                 } else { console.error("Failed to initialize house object buffer."); }
+
+
+                 // Create the ground
+                 let groundObjectData = ground();
+                 let groundBuffer = initObject(groundObjectData, shaderprogram_flat);
+                 if (groundBuffer) {
+                     groundBuffer.texture = grassTexture;
+                     groundBuffer.baseScale = 1.0;
+                     groundBuffer.pulseSpeed = 0; // No pulsing
+                     groundBuffer.pulseOffset = 0;
+                     sceneObjects.push(groundBuffer);
+                     console.log("Ground object created.");
+                 } else { console.error("Failed to initialize ground object buffer."); }
+
+
+                 // Create the path (curved version)
+                 let pathObjectData = curvedPath();
+                 let pathBuffer = initObject(pathObjectData, shaderprogram_flat);
+                 if (pathBuffer) {
+                     pathBuffer.texture = stoneTexture;
+                     pathBuffer.baseScale = 1.0;
+                     pathBuffer.pulseSpeed = 0.0; // No pulsing
+                     pathBuffer.pulseOffset = 0;
+                     sceneObjects.push(pathBuffer);
+                     console.log("Path object created.");
+                 } else { console.error("Failed to initialize path object buffer."); }
+
+
+                 // Create trees
+                 const treePositions = [
+                     { x: 1.5, z: -0.8, scale: 0.9 },
+                     { x: -1.8, z: 1.2, scale: 0.8 },
+                     { x: 0.0, z: -2.0, scale: 1.1 }
+                 ];
+                console.log(`Creating ${treePositions.length} trees...`);
+                 treePositions.forEach((pos, index) => {
+                     // Trunk
+                     let trunkData = treeTrunk();
+                     let trunkBuffer = initObject(trunkData, shaderprogram_flat);
+                     if(trunkBuffer) {
+                         trunkBuffer.texture = woodTexture;
+                         trunkBuffer.baseScale = pos.scale;
+                         trunkBuffer.pulseSpeed = 0.4 + index * 0.15; // Vary speed
+                         trunkBuffer.pulseOffset = index * Math.PI / 2.5; // Vary phase
+                         // Apply initial translation to model matrix stored in buffer object
+                         mat4.translate(trunkBuffer.model, trunkBuffer.model, [pos.x, 0, pos.z]);
+                         sceneObjects.push(trunkBuffer);
+                     } else { console.error(`Failed to initialize trunk buffer for tree ${index}`); }
+
+
+                     // Crown
+                     let crownData = treeCrown();
+                     let crownBuffer = initObject(crownData, shaderprogram_flat);
+                      if(crownBuffer) {
+                         crownBuffer.texture = leafTexture;
+                         crownBuffer.baseScale = pos.scale;
+                         crownBuffer.pulseSpeed = 0.4 + index * 0.15; // Match trunk animation
+                         crownBuffer.pulseOffset = index * Math.PI / 2.5; // Match trunk animation
+                          // Apply initial translation
+                         mat4.translate(crownBuffer.model, crownBuffer.model, [pos.x, 0, pos.z]);
+                         sceneObjects.push(crownBuffer);
+                     } else { console.error(`Failed to initialize crown buffer for tree ${index}`); }
+
+                 });
+                 console.log("Trees created.");
+
+                 // --- Matrix Setup ---
+                 // View matrix (Stays constant)
+                 let M_view = mat4.create();
+                 mat4.lookAt( M_view, [2.5, 1.8, 3.5], [0, 0, 0], [0, 1, 0] ); // Slightly further back
+
+                 // Projection matrix (Stays constant)
+                 let M_proj = mat4.create();
+                 mat4.perspective( M_proj, Math.PI / 4, canvas.width / canvas.height, 0.1, 100 );
+
+                 // --- Lighting Setup ---
+                 const lightPosition = [2.0, 2.0, 2.0]; // Initial light position
+                 const lightColor = [1.0, 1.0, 0.9];    // Warm white
+                 const ambientColor = [0.4, 0.4, 0.45]; // Dim ambient bluish
+                 const ambientIntensity = 0.8; // strong ambient for flat shading
+                 const attenuationFactor = 0.1; // How quickly light falls off
+
+                 // --- Get Uniform Locations (for the flat shader program) ---
+                 gl.useProgram(shaderprogram_flat); // Activate shader to get locations
+
+                 // Matrices
+                 const modelLoc = gl.getUniformLocation(shaderprogram_flat, "uModelMatrix");
+                 const viewLoc = gl.getUniformLocation(shaderprogram_flat, "uViewMatrix");
+                 const projLoc = gl.getUniformLocation(shaderprogram_flat, "uProjectionMatrix");
+                 const normalLoc = gl.getUniformLocation(shaderprogram_flat, "uNormalMatrix");
+
+                 // Lighting (Now needed by Vertex Shader, but get locations as usual)
+                 const lightPosLoc = gl.getUniformLocation(shaderprogram_flat, "uLightPosition");
+                 const lightColorLoc = gl.getUniformLocation(shaderprogram_flat, "uLightColor");
+                 const ambientColorLoc = gl.getUniformLocation(shaderprogram_flat, "uAmbientColor");
+                 const ambientIntensityLoc = gl.getUniformLocation(shaderprogram_flat, "uAmbientIntensity");
+                 const attenuationFactorLoc = gl.getUniformLocation(shaderprogram_flat, "uAttenuationFactor");
+
+                 // Texture Sampler (Needed by Fragment Shader)
+                 const texLoc = gl.getUniformLocation(shaderprogram_flat, "uTexture");
+
+                 // --- Set Initial Uniforms (that don't change per object/frame) ---
+                 gl.uniformMatrix4fv(viewLoc, false, M_view);
+                 gl.uniformMatrix4fv(projLoc, false, M_proj);
+                 gl.uniform3fv(lightColorLoc, lightColor);
+                 gl.uniform3fv(ambientColorLoc, ambientColor);
+                 gl.uniform1f(ambientIntensityLoc, ambientIntensity);
+                 gl.uniform1f(attenuationFactorLoc, attenuationFactor);
+                 gl.uniform1i(texLoc, 0); // Use texture unit 0
+
+                 // --- Animation Variables ---
+                 let angle = 0;
+                 let lastTime = 0;
+
+                 // --- Render Function ---
+                 console.log("Starting render loop...");
+                 function render(currentTime) {
+                    currentTime *= 0.001; // Convert time to seconds
+                    const deltaTime = currentTime - lastTime;
+                    lastTime = currentTime;
+
+                    // --- Update Animated Uniforms ---
+                    // Animate light position
+                    const lightX = 3.0 * Math.cos(currentTime * 0.4);
+                    const lightY = 4.0; // Keep height constant
+                    const lightZ = 3.0 * Math.sin(currentTime * 0.4);
+                    gl.uniform3f(lightPosLoc, lightX, lightY, lightZ); // Update light position uniform
+
+                    // (Optional: Could animate ambient intensity here if desired)
+
+                    // --- Prepare for Drawing ---
+                    glInit(); // Clear canvas and set viewport
+                    gl.useProgram(shaderprogram_flat); // Ensure correct program is active
+                    gl.activeTexture(gl.TEXTURE0); // Use texture unit 0
+
+                    // Update global rotation (only for house in this example)
+                    angle += deltaTime * 0.3;
+
+                    // --- Draw Each Object ---
+                    sceneObjects.forEach((obj, i) => {
+                        // Calculate current model matrix for this object
+                        let currentModelMatrix = mat4.clone(obj.model); // Start with initial translation if any
+
+                         // Apply pulsing scale
+                         const pulseAmount = 0.1;
+                         const pulseScale = obj.baseScale + (Math.sin(currentTime * obj.pulseSpeed + obj.pulseOffset) * pulseAmount * obj.baseScale);
+                         mat4.scale(currentModelMatrix, currentModelMatrix, [pulseScale, pulseScale, pulseScale]);
+
+                         // Apply global rotation ONLY to the house (index 0)
+                         if (i === 0) {
+                             mat4.rotateY(currentModelMatrix, currentModelMatrix, angle);
+                         }
+
+                        // Calculate Normal Matrix for this object's transformation
+                        let M_modelView = mat4.create();
+                        let M_normal = mat4.create();
+                        mat4.multiply(M_modelView, M_view, currentModelMatrix); // Use current model matrix
+                        mat4.invert(M_normal, M_modelView);
+                        mat4.transpose(M_normal, M_normal);
+
+                        // Set per-object uniforms
+                        gl.uniformMatrix4fv(modelLoc, false, currentModelMatrix);
+                        gl.uniformMatrix4fv(normalLoc, false, M_normal);
+
+                        // Bind the object's texture
+                        gl.bindTexture(gl.TEXTURE_2D, obj.texture || brickTexture); // Use default if needed
+
+                        // Draw the object (using its buffers and the flat shader)
+                        drawObject(obj, shaderprogram_flat);
+                    });
+
+                    // Request next frame
+                    requestAnimationFrame(render);
+                 }
+
+                 // Start the animation loop
+                 requestAnimationFrame(render);
+
+            } // End of shader program check
+         } // End of WebGL context check
+      </script>
+   </body>
+</html>
