@@ -305,7 +305,7 @@
 
         function ground() {
             // Define a large flat ground plane
-            const size = 8.0;  // Size of the ground plane
+            const size = 4.0;  // Size of the ground plane
             
             // Define vertices (a simple quad)
             let vertices = [
@@ -437,6 +437,10 @@
              const image = new Image();
              image.addEventListener("load", function() {
                  gl.bindTexture(gl.TEXTURE_2D, texture);
+                 
+                 // Move this line here - right before using the image
+                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                 
                  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
                  
                  // Set texture parameters
@@ -456,7 +460,6 @@
              });
              
              image.src = url;
-             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
              
              return texture;
          }
@@ -473,7 +476,7 @@
          let houseBuffer = initObject(houseObject, shaderprogram);
          houseBuffer.texture = brickTexture;
          houseBuffer.model = mat4.create();
-         mat4.fromScaling(houseBuffer.model, [0.5, 0.5, 0.5]);
+         mat4.fromScaling(houseBuffer.model, [0.8, 0.8, 0.8]);
          sceneObjects.push(houseBuffer);
 
          // Create the ground
@@ -485,7 +488,7 @@
 
          // Create a model matrix for the house
          let M_model = mat4.create();
-         mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view
+         mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view (lvl 1)
          
          // Create a view matrix (trimetric projection requires specific angles)
          // Trimetric projection: viewing object from 3 angles, none of which are equal
@@ -493,7 +496,7 @@
          // Position camera at an angle to see all three dimensions
          mat4.lookAt(
             M_view,
-            [3, 2.5, 4],              // Camera position (eye)
+            [2.5, 1.8, 3],            // Camera position (eye)
             [0, 0, 0],                // Target point (center)
             [0, 1, 0]                 // Up vector
          );
@@ -560,7 +563,7 @@
                 // Apply object's model matrix
                 if (i === 0) { // House - animate it
                     mat4.identity(sceneObjects[i].model);
-                    mat4.fromScaling(sceneObjects[i].model, [0.5, 0.5, 0.5]);
+                    mat4.fromScaling(sceneObjects[i].model, [0.8, 0.8, 0.8]);
                     mat4.rotateY(sceneObjects[i].model, sceneObjects[i].model, angle);
                 }
                 
