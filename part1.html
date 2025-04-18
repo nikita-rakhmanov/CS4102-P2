@@ -600,16 +600,12 @@
             };
         }
 
-        /**
-         * Create a simple tree object consisting of a trunk and a cone-shaped crown
-         */
-        function tree() {
-            // Tree parameters
+        // Replace your existing tree() function with these two functions
+        function treeTrunk() {
+            // Tree trunk parameters
             const trunkHeight = 0.6;
             const trunkRadius = 0.1;
-            const crownHeight = 0.8;
-            const crownRadius = 0.4;
-            const segments = 8; // Number of segments for the cylindrical trunk and conical crown
+            const segments = 8;
             
             let vertices = [];
             let colors = [];
@@ -618,8 +614,7 @@
             let indices = [];
             
             // Create the tree trunk (cylinder)
-            // Bottom center of trunk
-            const trunkBottomY = -0.5; // Position at the same height as ground
+            const trunkBottomY = -0.5; // Position at ground level
             
             // Create the trunk vertices
             for (let i = 0; i <= segments; i++) {
@@ -651,7 +646,30 @@
                 indices.push([idx + 1, idx + 3, idx + 2]);
             }
             
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices,
+                normals: normals,
+                texcoords: texcoords
+            };
+        }
+
+        function treeCrown() {
+            // Crown parameters
+            const trunkHeight = 0.6;
+            const crownHeight = 0.8;
+            const crownRadius = 0.4;
+            const segments = 8;
+            
+            let vertices = [];
+            let colors = [];
+            let normals = [];
+            let texcoords = [];
+            let indices = [];
+            
             // Create the crown (cone)
+            const trunkBottomY = -0.5; // Same as in trunk function
             const crownBaseY = trunkBottomY + trunkHeight;
             const crownTopY = crownBaseY + crownHeight;
             
@@ -680,12 +698,13 @@
                 vertices.push([x, crownBaseY, z, 1]);
                 colors.push([0.0, 0.8, 0.0, 1.0]); // Green for crown
                 
-                // Calculate normal for cone surface (pointing outward and up)
+                // Calculate normal for cone surface
                 const nx = x;
                 const nz = z;
                 const normalLength = Math.sqrt(nx*nx + crownHeight*crownHeight + nz*nz);
                 normals.push([nx/normalLength, crownHeight/normalLength, nz/normalLength, 0]);
                 
+                // Better texture coordinates for the leaves to wrap around the cone
                 texcoords.push([i / segments, 0]);
             }
             
@@ -900,21 +919,39 @@
          ];
 
          for (let i = 0; i < treePositions.length; i++) {
-             let treeObject = tree();
-             let treeBuffer = initObject(treeObject, shaderprogram);
-             treeBuffer.texture = woodTexture;
-             treeBuffer.model = mat4.create();
-             
-             // Position and scale the tree
              const pos = treePositions[i];
-             mat4.fromScaling(treeBuffer.model, [pos.scale, pos.scale, pos.scale]);
-             mat4.translate(treeBuffer.model, treeBuffer.model, [pos.x, 0, pos.z]);
              
-             treeBuffer.pulseSpeed = 0.4 + i * 0.1; // Different speed for each tree
-             treeBuffer.pulseOffset = i * Math.PI / 3; // Different phase for each tree
-             treeBuffer.baseScale = pos.scale;
-
-             sceneObjects.push(treeBuffer);
+             // Create tree trunk
+             let trunkObject = treeTrunk();
+             let trunkBuffer = initObject(trunkObject, shaderprogram);
+             trunkBuffer.texture = woodTexture;
+             trunkBuffer.model = mat4.create();
+             
+             // Position and scale the trunk
+             mat4.fromScaling(trunkBuffer.model, [pos.scale, pos.scale, pos.scale]);
+             mat4.translate(trunkBuffer.model, trunkBuffer.model, [pos.x, 0, pos.z]);
+             
+             trunkBuffer.pulseSpeed = 0.4 + i * 0.1; // Different speed for each tree
+             trunkBuffer.pulseOffset = i * Math.PI / 3; // Different phase for each tree
+             trunkBuffer.baseScale = pos.scale;
+             
+             sceneObjects.push(trunkBuffer);
+             
+             // Create tree crown
+             let crownObject = treeCrown();
+             let crownBuffer = initObject(crownObject, shaderprogram);
+             crownBuffer.texture = leafTexture; // Use the leaf texture!
+             crownBuffer.model = mat4.create();
+             
+             // Position and scale the crown (same as trunk)
+             mat4.fromScaling(crownBuffer.model, [pos.scale, pos.scale, pos.scale]);
+             mat4.translate(crownBuffer.model, crownBuffer.model, [pos.x, 0, pos.z]);
+             
+             crownBuffer.pulseSpeed = 0.4 + i * 0.1; // Match trunk animation
+             crownBuffer.pulseOffset = i * Math.PI / 3; // Match trunk animation
+             crownBuffer.baseScale = pos.scale;
+             
+             sceneObjects.push(crownBuffer);
          }
 
          // Create a model matrix for the house
@@ -1052,14 +1089,25 @@
                     mat4.identity(sceneObjects[i].model);
                     mat4.fromScaling(sceneObjects[i].model, [1.0, 1.0, 1.0]);
                 } else { // Trees - position and pulse
-                    const treePos = treePositions[i-3];
-                    mat4.identity(sceneObjects[i].model);
-                    mat4.fromScaling(sceneObjects[i].model, [
-                        treePos.scale * pulseScale, 
-                        treePos.scale * pulseScale, 
-                        treePos.scale * pulseScale
-                    ]);
-                    mat4.translate(sceneObjects[i].model, sceneObjects[i].model, [treePos.x, 0, treePos.z]);
+                    // Modify the tree handling in your render function's object loop
+                    if (i >= 3) { // Tree objects start at index 3
+                        // Calculate which tree this is (each tree has 2 parts)
+                        const treeIndex = Math.floor((i - 3) / 2);
+                        const isPart = (i - 3) % 2; // 0 for trunk, 1 for crown
+                        
+                        if (treeIndex < treePositions.length) {
+                            const treePos = treePositions[treeIndex];
+                            
+                            // Apply pulsing and position for both trunk and crown
+                            mat4.identity(sceneObjects[i].model);
+                            mat4.fromScaling(sceneObjects[i].model, [
+                                treePos.scale * pulseScale, 
+                                treePos.scale * pulseScale, 
+                                treePos.scale * pulseScale
+                            ]);
+                            mat4.translate(sceneObjects[i].model, sceneObjects[i].model, [treePos.x, 0, treePos.z]);
+                        }
+                    }
                 }
                 
                 // Update normal matrix once per object
