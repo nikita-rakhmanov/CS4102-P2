@@ -353,6 +353,140 @@
                 texcoords: texcoords
             };
         }
+
+        // Add this after your ground() function
+        function path() {
+            // Define a simple path from the edge toward the house
+            const pathWidth = 0.5;
+            const pathLength = 3.0;
+            
+            // Define vertices for a path starting from front (z-) direction
+            // Set y-coordinate slightly above ground to prevent z-fighting
+            let vertices = [
+                // Left edge of path
+                [-pathWidth/2, -0.49, -pathLength, 1],     // 0: far left
+                [-pathWidth/2, -0.49, 0, 1],              // 1: near left
+                
+                // Right edge of path
+                [pathWidth/2, -0.49, 0, 1],               // 2: near right
+                [pathWidth/2, -0.49, -pathLength, 1]      // 3: far right
+            ];
+            
+            // Define triangles
+            let indices = [
+                [0, 1, 2],  // First triangle
+                [0, 2, 3]   // Second triangle
+            ];
+            
+            // Define colors (white to let texture show fully)
+            let colors = [
+                [1.0, 1.0, 1.0, 1.0], // far left
+                [1.0, 1.0, 1.0, 1.0], // near left
+                [1.0, 1.0, 1.0, 1.0], // near right
+                [1.0, 1.0, 1.0, 1.0]  // far right
+            ];
+            
+            // Define normals (pointing up)
+            let normals = [
+                [0, 1, 0, 0], // far left
+                [0, 1, 0, 0], // near left
+                [0, 1, 0, 0], // near right
+                [0, 1, 0, 0]  // far right
+            ];
+            
+            // Define texture coordinates
+            // Will repeat texture along the length of the path
+            let texcoords = [
+                [0.0, 0.0],  // far left
+                [0.0, 3.0],  // near left (repeat texture 3 times along length)
+                [1.0, 3.0],  // near right
+                [1.0, 0.0]   // far right
+            ];
+            
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices,
+                normals: normals,
+                texcoords: texcoords
+            };
+        }
+
+        // Add after the path() function
+        function curvedPath() {
+            const segments = 7;            // More segments for smoother curve
+            const pathWidth = 0.3;         // Thinner path
+            const pathLength = 0.6;        // Shorter segments for better control
+            const curveAmount = 0.3;       // Increase curve amount
+            const startDistance = -4.0;    // Start further away
+            
+            let vertices = [];
+            let colors = [];
+            let normals = [];
+            let texcoords = [];
+            let indices = [];
+            
+            let currentAngle = 0;
+            let lastX = 0;
+            let lastZ = startDistance; // Start further away
+            
+            for (let i = 0; i < segments; i++) {
+                // Calculate new segment angle (gradually curving)
+                currentAngle += curveAmount * (Math.sin(i/segments * Math.PI)); // Sine curve for natural path
+                
+                // Calculate next position based on previous segment
+                let nextX = lastX + pathLength * Math.sin(currentAngle);
+                let nextZ = lastZ + pathLength * Math.cos(currentAngle);
+                
+                // Stop adding segments if we get too close to the house (approximately at z=-0.5)
+                if (nextZ > -0.6) {
+                    break;
+                }
+                
+                // Define four corners of this path segment
+                let v0 = vertices.length / 4; // Number of vertices so far
+                
+                // Add vertices for this segment
+                vertices.push(
+                    lastX - pathWidth/2 * Math.cos(currentAngle), -0.49, lastZ + pathWidth/2 * Math.sin(currentAngle), 1,
+                    lastX + pathWidth/2 * Math.cos(currentAngle), -0.49, lastZ - pathWidth/2 * Math.sin(currentAngle), 1,
+                    nextX + pathWidth/2 * Math.cos(currentAngle), -0.49, nextZ - pathWidth/2 * Math.sin(currentAngle), 1,
+                    nextX - pathWidth/2 * Math.cos(currentAngle), -0.49, nextZ + pathWidth/2 * Math.sin(currentAngle), 1
+                );
+                
+                // Add colors
+                for (let j = 0; j < 4; j++) {
+                    colors.push(1.0, 1.0, 1.0, 1.0);
+                    normals.push(0, 1, 0, 0);
+                }
+                
+                // Add texture coordinates
+                texcoords.push(
+                    0.0, i,
+                    1.0, i,
+                    1.0, i+1,
+                    0.0, i+1
+                );
+                
+                // Add triangles (two per segment)
+                indices.push(
+                    v0, v0+1, v0+2,
+                    v0, v0+2, v0+3
+                );
+                
+                // Update for next segment
+                lastX = nextX;
+                lastZ = nextZ;
+            }
+            
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices, 
+                normals: normals,
+                texcoords: texcoords
+            };
+        }
       </script>
 
       <script>
@@ -466,7 +600,8 @@
 
          // Load textures
          const brickTexture = loadTexture("brick_texture.png");
-         const grassTexture = loadTexture("grass_texture.png");  // Make sure you have this file
+         const grassTexture = loadTexture("grass_texture.png");  
+         const stoneTexture = loadTexture("stone_texture.png"); 
 
          // Create objects array
          let sceneObjects = [];
@@ -485,6 +620,13 @@
          groundBuffer.texture = grassTexture;
          groundBuffer.model = mat4.create();
          sceneObjects.push(groundBuffer);
+
+         // Create the path (curved version)
+         let pathObject = curvedPath();
+         let pathBuffer = initObject(pathObject, shaderprogram);
+         pathBuffer.texture = stoneTexture;
+         pathBuffer.model = mat4.create();
+         sceneObjects.push(pathBuffer);
 
          // Create a model matrix for the house
          let M_model = mat4.create();
