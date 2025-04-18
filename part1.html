@@ -1,0 +1,543 @@
+<!doctype html>
+
+<html>
+   <body>
+      <canvas width = "800" height = "600" id = "gl-canvas">
+        Sorry; your web browser does not support HTML5's canvas element.
+      </canvas>
+
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js" type="text/javascript"></script>
+      <script>
+         /**
+          * This function initialises GL and the viewport.
+          */
+          function glInit() {
+            // Initialise and clear viewport
+            gl.clearColor(0.1, 0.1, 0.1, 0.9);
+            gl.clearDepth(1.0);
+            gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.enable(gl.DEPTH_TEST);
+         }
+
+         /**
+          * This function draws an object using the supplied shader program
+          * 
+          * @param   bufferObject   An object returned by initObject
+          * @param   shaderprogram  a shader program returned by createProgram
+          */
+         function drawObject(bufferObject, shaderprogram) {
+            gl.useProgram(shaderprogram);
+
+            let vertex_buffer = bufferObject.vertex_buffer;
+            let color_buffer = bufferObject.color_buffer;
+            let normal_buffer = bufferObject.normal_buffer;
+            let tex_buffer = bufferObject.tex_buffer;
+            let index_buffer = bufferObject.index_buffer;
+            let number = bufferObject.numVertices;
+
+            // Bind vertex buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+            let aPosition = gl.getAttribLocation(shaderprogram, "aPosition");
+            if (aPosition !== -1) {
+                gl.vertexAttribPointer(aPosition, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aPosition);
+            }
+
+            // Bind color buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, color_buffer);
+            let aColor = gl.getAttribLocation(shaderprogram, "aColor");
+            if (aColor !== -1) {
+                gl.vertexAttribPointer(aColor, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aColor);
+            }
+
+            // Bind normal buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, normal_buffer);
+            let aNormal = gl.getAttribLocation(shaderprogram, "aNormal");
+            if (aNormal !== -1) {
+                gl.vertexAttribPointer(aNormal, 4, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aNormal);
+            }
+
+            // Bind texture coordinate buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
+            let aTexCoord = gl.getAttribLocation(shaderprogram, "aTexCoord");
+            if (aTexCoord !== -1) {
+                gl.vertexAttribPointer(aTexCoord, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(aTexCoord);
+            }
+
+            // Bind index buffer and draw
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+            gl.drawElements(gl.TRIANGLES, number, gl.UNSIGNED_SHORT, 0);
+         }
+
+         /**
+          * This function initialises an object. It uploads all its arrays to the GPU
+          * and records the references to each. We can then pass this object to drawObject
+          * which will bind the arrays appropriately
+          * 
+          * @param   object         An object containing arrays for vertices, colors, normals, texcoords, and indices
+          * @param   shaderprogram  a shader program returned by createProgram
+          */
+        function initObject(object, shaderprogram) {
+            gl.useProgram(shaderprogram);
+
+            // Vertices, colors and indices arrive in the form of 2D matrix objects for ease of manipulation
+            // We need to flatten them and convert them to JS arrays before passing them to WebGL
+            let vertices = object.vertices.flat();
+            let colors = object.colors.flat();
+            let indices = object.indices.flat();
+            let normals = object.normals.flat();
+            let texcoords = object.texcoords.flat();
+            
+            // Create and store data into vertex buffer
+            let vertex_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            // Create and store data into color buffer
+            let color_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, color_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+            // Create and store data into normal buffer
+            let normal_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, normal_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+
+            // Create and store texture coordinates buffer
+            let tex_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, tex_buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
+
+            // Create and store data into index buffer
+            let index_buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            return { 
+                vertex_buffer: vertex_buffer,
+                color_buffer: color_buffer,
+                normal_buffer: normal_buffer,
+                tex_buffer: tex_buffer,
+                index_buffer: index_buffer,
+                numVertices: indices.length 
+            };
+        }
+
+         /**
+          * This function compiles the supplied vertex and fragment shaders into a program
+          * 
+          * @param   vertCode  Vertex shader code, written in GLSL
+          * @param   fragCode  Fragment shader code, written in GLSL
+          * 
+          * @returns    Shader program
+          */
+         function createProgram(vertCode, fragCode) {
+            // Compile and upload shader programs
+            let vertShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertShader, vertCode);
+            gl.compileShader(vertShader);
+
+            // Check for compilation errors
+            if (!gl.getShaderParameter(vertShader, gl.COMPILE_STATUS)) {
+               console.error('Vertex shader compilation error: ' + gl.getShaderInfoLog(vertShader));
+            }
+
+            let fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragShader, fragCode);
+            gl.compileShader(fragShader);
+
+            // Check for compilation errors
+            if (!gl.getShaderParameter(fragShader, gl.COMPILE_STATUS)) {
+               console.error('Fragment shader compilation error: ' + gl.getShaderInfoLog(fragShader));
+            }
+
+            let shaderprogram = gl.createProgram();
+            gl.attachShader(shaderprogram, vertShader);
+            gl.attachShader(shaderprogram, fragShader);
+            gl.linkProgram(shaderprogram);
+
+            // Check for linking errors
+            if (!gl.getProgramParameter(shaderprogram, gl.LINK_STATUS)) {
+               console.error('Shader program linking error: ' + gl.getProgramInfoLog(shaderprogram));
+            }
+
+            gl.useProgram(shaderprogram);
+
+            return shaderprogram;
+         }
+
+         /**
+          * Calculate a normal vector for a triangle face
+          * @param {Array} v1 - First vertex of the triangle
+          * @param {Array} v2 - Second vertex of the triangle
+          * @param {Array} v3 - Third vertex of the triangle
+          * @returns {Array} - Normalized normal vector [x, y, z, 0]
+          */
+         function calculateFaceNormal(v1, v2, v3) {
+            // Create vectors from vertices
+            const vec1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+            const vec2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+            
+            // Calculate cross product
+            const normal = [
+                vec1[1] * vec2[2] - vec1[2] * vec2[1],
+                vec1[2] * vec2[0] - vec1[0] * vec2[2],
+                vec1[0] * vec2[1] - vec1[1] * vec2[0]
+            ];
+            
+            // Normalize the vector
+            const length = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+            
+            if (length > 0) {
+                normal[0] /= length;
+                normal[1] /= length;
+                normal[2] /= length;
+            }
+            
+            // Return as vec4 with w=0 (direction vector)
+            return [normal[0], normal[1], normal[2], 0];
+         }
+      </script>
+      <script>
+         /**
+          * Create a house shape with at least 8 faces
+          * 
+          * @returns    object consisting of vertices, colors, normals, texcoords, and indices
+          */
+         function house() {
+            // Parameters remain the same
+            const width = 0.8;
+            const length = 1.0;
+            const height = 0.6;
+            const roofHeight = 0.4;
+            const w2 = width/2;
+            const l2 = length/2;
+            
+            // We'll duplicate vertices to allow different texture coordinates per face
+            // First define the basic positions that will be reused
+            const positions = [
+                // Base/floor vertices (y = -height/2)
+                [-w2, -height/2, -l2],  // 0: front-left
+                [w2, -height/2, -l2],   // 1: front-right
+                [w2, -height/2, l2],    // 2: back-right
+                [-w2, -height/2, l2],   // 3: back-left
+                
+                // Top of walls (y = height/2)
+                [-w2, height/2, -l2],   // 4: front-left-top
+                [w2, height/2, -l2],    // 5: front-right-top
+                [w2, height/2, l2],     // 6: back-right-top
+                [-w2, height/2, l2],    // 7: back-left-top
+                
+                // Roof peak
+                [0, height/2 + roofHeight, 0]  // 8: roof peak
+            ];
+            
+            // Now create our actual vertices, normals, and texture coordinates arrays
+            let vertices = [];
+            let normals = [];
+            let texcoords = [];
+            let indices = [];
+            let colors = [];
+            
+            // Function to add a triangle with proper texture coordinates
+            function addTriangle(a, b, c, na, nb, nc, ta, tb, tc) {
+                // Add vertices
+                vertices.push(
+                    [positions[a][0], positions[a][1], positions[a][2], 1],
+                    [positions[b][0], positions[b][1], positions[b][2], 1],
+                    [positions[c][0], positions[c][1], positions[c][2], 1]
+                );
+                
+                // Add normals (calculated for each face)
+                const normal = calculateFaceNormal(positions[a], positions[b], positions[c]);
+                normals.push(normal, normal, normal);
+                
+                // Add texture coordinates
+                texcoords.push(ta, tb, tc);
+                
+                // Add colors (white)
+                colors.push(
+                    [1.0, 1.0, 1.0, 1.0],
+                    [1.0, 1.0, 1.0, 1.0],
+                    [1.0, 1.0, 1.0, 1.0]
+                );
+                
+                // Add indices (sequential since we're redefining vertices for each face)
+                const idx = vertices.length - 3;
+                indices.push([idx, idx+1, idx+2]);
+            }
+            
+            // Floor (2 triangles)
+            addTriangle(0, 1, 2, 
+                        [0,-1,0], [0,-1,0], [0,-1,0], 
+                        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]);
+            addTriangle(0, 2, 3, 
+                        [0,-1,0], [0,-1,0], [0,-1,0], 
+                        [0.0, 0.0], [1.0, 1.0], [0.0, 1.0]);
+            
+            // Front wall (2 triangles)
+            addTriangle(0, 4, 5, 
+                        [0,0,-1], [0,0,-1], [0,0,-1], 
+                        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]);
+            addTriangle(0, 5, 1, 
+                        [0,0,-1], [0,0,-1], [0,0,-1], 
+                        [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]);
+            
+            // Right wall (2 triangles)
+            addTriangle(1, 5, 6, 
+                        [1,0,0], [1,0,0], [1,0,0], 
+                        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]);
+            addTriangle(1, 6, 2, 
+                        [1,0,0], [1,0,0], [1,0,0], 
+                        [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]);
+            
+            // Back wall (2 triangles)
+            addTriangle(2, 6, 7, 
+                        [0,0,1], [0,0,1], [0,0,1], 
+                        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]);
+            addTriangle(2, 7, 3, 
+                        [0,0,1], [0,0,1], [0,0,1], 
+                        [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]);
+            
+            // Left wall (2 triangles)
+            addTriangle(3, 7, 4, 
+                        [-1,0,0], [-1,0,0], [-1,0,0], 
+                        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]);
+            addTriangle(3, 4, 0, 
+                        [-1,0,0], [-1,0,0], [-1,0,0], 
+                        [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]);
+            
+            // Roof triangles
+            // Front roof
+            addTriangle(4, 8, 5, 
+                        [0,0.5,-0.5], [0,0.5,-0.5], [0,0.5,-0.5], 
+                        [0.0, 1.0], [0.5, 0.0], [1.0, 1.0]);
+            
+            // Right roof
+            addTriangle(5, 8, 6, 
+                        [0.5,0.5,0], [0.5,0.5,0], [0.5,0.5,0], 
+                        [0.0, 1.0], [0.5, 0.0], [1.0, 1.0]);
+            
+            // Back roof
+            addTriangle(6, 8, 7, 
+                        [0,0.5,0.5], [0,0.5,0.5], [0,0.5,0.5], 
+                        [0.0, 1.0], [0.5, 0.0], [1.0, 1.0]);
+            
+            // Left roof
+            addTriangle(7, 8, 4, 
+                        [-0.5,0.5,0], [-0.5,0.5,0], [-0.5,0.5,0], 
+                        [0.0, 1.0], [0.5, 0.0], [1.0, 1.0]);
+            
+            return {
+                vertices: vertices,
+                colors: colors,
+                indices: indices,
+                normals: normals,
+                texcoords: texcoords
+            };
+         }
+      </script>
+
+      <script>
+         // GLSL shader code - Simple ambient shading
+         const vertCode = `
+            attribute vec4 aPosition;
+            attribute vec4 aColor;
+            attribute vec4 aNormal;
+            attribute vec2 aTexCoord;
+
+            uniform mat4 uModelMatrix;
+            uniform mat4 uViewMatrix;
+            uniform mat4 uProjectionMatrix;
+
+            varying vec4 vColor;
+            varying vec2 vTexCoord;
+
+            void main() {
+                // Transform position by model, view, and projection matrices
+                gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
+                
+                // Pass color and texture coordinates to fragment shader
+                vColor = aColor;
+                vTexCoord = aTexCoord;
+            }
+         `;
+
+         const fragCode = `
+            precision mediump float;
+            
+            varying vec4 vColor;
+            varying vec2 vTexCoord;
+            
+            uniform sampler2D uTexture;
+            uniform vec3 uAmbientLight;
+            
+            void main() {
+                // Get texture color
+                vec4 texColor = texture2D(uTexture, vTexCoord);
+                
+                // Apply ambient lighting - constant for all points
+                vec3 ambientColor = texColor.rgb * vColor.rgb * uAmbientLight;
+                
+                // Output final color with texture alpha
+                gl_FragColor = vec4(ambientColor, texColor.a);
+            }
+         `;
+      </script>
+
+      <script>
+         // Create a canvas to paint on
+         var canvas = document.getElementById('gl-canvas');
+         var gl = canvas.getContext('webgl');
+         
+         if (!gl) {
+            console.error("WebGL isn't available");
+         }
+
+         // Initialize GL
+         glInit();
+         
+         // Create shader program
+         var shaderprogram = createProgram(vertCode, fragCode);
+
+         // Create a texture loader function
+         function loadTexture(url) {
+             const texture = gl.createTexture();
+             gl.bindTexture(gl.TEXTURE_2D, texture);
+             
+             // Fill with a single pixel until image loads
+             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, 
+                          new Uint8Array([255, 0, 0, 255]));
+             
+             // Load image
+             const image = new Image();
+             image.addEventListener("load", function() {
+                 gl.bindTexture(gl.TEXTURE_2D, texture);
+                 
+                 // Flip Y for texture coordinates
+                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                 
+                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                 
+                 // Set texture parameters
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                 
+                 gl.generateMipmap(gl.TEXTURE_2D);
+                 
+                 // Force a redraw after texture loads
+                 requestAnimationFrame(render);
+             });
+             
+             image.addEventListener("error", function(e) {
+                 console.error("Error loading texture:", e, url);
+             });
+             
+             image.src = url;
+             
+             return texture;
+         }
+
+         // Load a single texture for the house
+         const houseTexture = loadTexture("textures/brick_texture.png");
+
+         // Create the house object
+         let houseObject = house();
+         let houseBuffer = initObject(houseObject, shaderprogram);
+         
+         // Set up trimetric projection
+         // Create a model matrix (for positioning and scaling)
+         let M_model = mat4.create();
+         mat4.fromScaling(M_model, [0.5, 0.5, 0.5]); // Scale it down to fit in view
+         
+         // Create a view matrix with a trimetric view
+         // Trimetric projection: viewing object from 3 angles, none of which are equal
+         let M_view = mat4.create();
+         mat4.lookAt(
+            M_view,
+            [1.2, 1.0, 1.5],           // Camera position (eye)
+            [0, 0, 0],                 // Target point (center)
+            [0, 1, 0]                  // Up vector
+         );
+         
+         // Create a projection matrix
+         let M_proj = mat4.create();
+         mat4.ortho(                   // Use orthographic for trimetric
+            M_proj,
+            -1.5, 1.5,                 // Left, right
+            -1.5, 1.5,                 // Bottom, top
+            0.1, 10                    // Near, far
+         );
+
+         // Set uniform matrices
+         gl.useProgram(shaderprogram);
+         
+         // Model matrix
+         let modelLoc = gl.getUniformLocation(shaderprogram, "uModelMatrix");
+         gl.uniformMatrix4fv(modelLoc, false, M_model);
+         
+         // View matrix
+         let viewLoc = gl.getUniformLocation(shaderprogram, "uViewMatrix");
+         gl.uniformMatrix4fv(viewLoc, false, M_view);
+         
+         // Projection matrix
+         let projLoc = gl.getUniformLocation(shaderprogram, "uProjectionMatrix");
+         gl.uniformMatrix4fv(projLoc, false, M_proj);
+         
+         // Set ambient light color - constant for all fragments
+         const ambientLightLoc = gl.getUniformLocation(shaderprogram, "uAmbientLight");
+         gl.uniform3f(ambientLightLoc, 0.7, 0.7, 0.7); // Medium bright ambient light
+         
+         // Set up texture uniform
+         let texLoc = gl.getUniformLocation(shaderprogram, "uTexture");
+         gl.uniform1i(texLoc, 0); // Use texture unit 0
+         
+         // Animation variables
+         let angle = 0;
+         let lastTime = null;
+
+         // Render function with simple rotation animation
+         function render(currentTime) {
+            // Convert to seconds first
+            currentTime *= 0.001; 
+            
+            // Calculate delta time
+            const deltaTime = lastTime === null ? 0.016 : currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Clear the canvas
+            glInit();
+            
+            // Update rotation angle
+            angle += deltaTime * 0.5;
+            
+            // Create new model matrix with rotation
+            let rotatedModel = mat4.create();
+            mat4.fromScaling(rotatedModel, [0.5, 0.5, 0.5]);
+            mat4.rotateY(rotatedModel, rotatedModel, angle);
+            
+            // Update model matrix uniform
+            gl.uniformMatrix4fv(modelLoc, false, rotatedModel);
+            
+            // Bind the texture
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, houseTexture);
+            
+            // Draw the house
+            drawObject(houseBuffer, shaderprogram);
+            
+            // Request next frame
+            requestAnimationFrame(render);
+         }
+         
+         // Start animation
+         requestAnimationFrame(render);
+      </script>
+   </body>
+</html>
